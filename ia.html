@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduHive — Chat IA</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap"
+        rel="stylesheet" />
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #111118;
+            --surface2: #18181f;
+            --border: #2a2a35;
+            --accent: #7c6aff;
+            --accent2: #ff6a9b;
+            --accent3: #6affcc;
+            --text: #f0f0ff;
+            --text2: #8888aa;
+            --user-bubble: #1e1e2e;
+            --ai-bubble: #13131a;
+            --radius: 18px;
+            --radius-sm: 10px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* ─── SIDEBAR ─── */
+        .sidebar {
+            width: 260px;
+            min-width: 260px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 16px;
+            gap: 8px;
+        }
+
+        .logo {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 22px;
+            letter-spacing: -0.5px;
+            padding: 8px 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            width: 34px;
+            height: 34px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .logo span {
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .sidebar-label {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text2);
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            padding: 4px 12px;
+            margin-top: 8px;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 13.5px;
+            color: var(--text2);
+            transition: all 0.15s;
+        }
+
+        .sidebar-item:hover,
+        .sidebar-item.active {
+            background: var(--surface2);
+            color: var(--text);
+        }
+
+        .sidebar-item .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            flex-shrink: 0;
+        }
+
+        .sidebar-bottom {
+            margin-top: auto;
+            border-top: 1px solid var(--border);
+            padding-top: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-left: 4px;
+        }
+
+        .avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .user-info {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .user-name {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .user-role {
+            font-size: 11px;
+            color: var(--text2);
+        }
+
+        /* ─── MAIN CHAT ─── */
+        .chat-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 20px 28px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--surface);
+        }
+
+        .chat-header h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .status-dot {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--accent3);
+        }
+
+        .status-dot::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent3);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* ─── MESSAGES ─── */
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            scroll-behavior: smooth;
+        }
+
+        .messages::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .messages::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            animation: fadeUp 0.3s ease;
+            max-width: 820px;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+            align-self: flex-end;
+        }
+
+        .msg-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .message.ai .msg-avatar {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+        }
+
+        .message.user .msg-avatar {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text2);
+        }
+
+        .msg-content {
+            max-width: 680px;
+        }
+
+        .msg-bubble {
+            padding: 14px 18px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.65;
+        }
+
+        .message.ai .msg-bubble {
+            background: var(--ai-bubble);
+            border: 1px solid var(--border);
+            border-radius: 4px 18px 18px 18px;
+        }
+
+        .message.user .msg-bubble {
+            background: var(--accent);
+            border-radius: 18px 4px 18px 18px;
+            color: white;
+        }
+
+        .msg-time {
+            font-size: 11px;
+            color: var(--text2);
+            margin-top: 4px;
+            padding: 0 4px;
+        }
+
+        .message.user .msg-time {
+            text-align: right;
+        }
+
+        /* ─── UPLOAD CARD ─── */
+        .upload-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-top: 8px;
+        }
+
+        .upload-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .upload-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: 1px dashed var(--border);
+            background: transparent;
+            color: var(--text2);
+            font-family: 'DM Sans', sans-serif;
+            flex: 1;
+        }
+
+        .upload-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(124, 106, 255, 0.06);
+        }
+
+        .upload-btn.selected {
+            border-color: var(--accent3);
+            color: var(--accent3);
+            background: rgba(106, 255, 204, 0.06);
+            border-style: solid;
+        }
+
+        .upload-btn input {
+            display: none;
+        }
+
+        .record-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text2);
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.15s;
+            flex: 1;
+        }
+
+        .record-btn:hover {
+            border-color: var(--accent2);
+            color: var(--accent2);
+        }
+
+        .record-btn.recording {
+            border-color: #ff4466;
+            color: #ff4466;
+            background: rgba(255, 68, 102, 0.08);
+            animation: recordPulse 1s infinite;
+        }
+
+        @keyframes recordPulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 68, 102, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px rgba(255, 68, 102, 0);
+            }
+        }
+
+        .analyze-btn {
+            width: 100%;
+            padding: 13px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: white;
+            font-family: 'Syne', sans-serif;
+            transition: all 0.2s;
+            letter-spacing: 0.3px;
+        }
+
+        .analyze-btn:hover {
+            opacity: 0.88;
+            transform: translateY(-1px);
+        }
+
+        .analyze-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ─── RESULTS CARD ─── */
+        .results-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .results-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .results-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .score-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(124, 106, 255, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(124, 106, 255, 0.3);
+        }
+
+        .lacunes-list {
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .lacune-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            background: var(--surface);
+        }
+
+        .severity-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-top: 5px;
+            flex-shrink: 0;
+        }
+
+        .severity-dot.high {
+            background: #ff4466;
+        }
+
+        .severity-dot.medium {
+            background: #ffaa44;
+        }
+
+        .severity-dot.low {
+            background: var(--accent3);
+        }
+
+        .lacune-text {
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .lacune-topic {
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .lacune-desc {
+            color: var(--text2);
+            font-size: 12px;
+        }
+
+        /* ─── QUESTIONS ─── */
+        .questions-section {
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .section-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text2);
+            margin-bottom: 4px;
+        }
+
+        .question-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .question-card:hover {
+            border-color: var(--accent);
+        }
+
+        .question-card.answered {
+            border-color: var(--accent3);
+            opacity: 0.7;
+        }
+
+        .question-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .question-type {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: rgba(124, 106, 255, 0.1);
+            color: var(--accent);
+            border: 1px solid rgba(124, 106, 255, 0.2);
+        }
+
+        .question-text {
+            font-size: 13.5px;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+
+        .answer-input {
+            width: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: var(--text);
+            font-size: 13px;
+            font-family: 'DM Sans', sans-serif;
+            resize: none;
+            transition: border-color 0.15s;
+            outline: none;
+        }
+
+        .answer-input:focus {
+            border-color: var(--accent);
+        }
+
+        .mcq-options {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .mcq-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            transition: all 0.15s;
+        }
+
+        .mcq-option:hover {
+            border-color: var(--accent);
+        }
+
+        .mcq-option.selected {
+            border-color: var(--accent);
+            background: rgba(124, 106, 255, 0.1);
+        }
+
+        .mcq-option input {
+            display: none;
+        }
+
+        .submit-answer-btn {
+            margin-top: 10px;
+            padding: 9px 18px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            background: var(--accent);
+            color: white;
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.15s;
+        }
+
+        .submit-answer-btn:hover {
+            opacity: 0.85;
+        }
+
+        .answer-result {
+            margin-top: 10px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .answer-result.correct {
+            background: rgba(106, 255, 204, 0.08);
+            border: 1px solid rgba(106, 255, 204, 0.2);
+            color: var(--accent3);
+        }
+
+        .answer-result.incorrect {
+            background: rgba(255, 68, 102, 0.08);
+            border: 1px solid rgba(255, 68, 102, 0.2);
+            color: #ff7799;
+        }
+
+        /* ─── TYPING ─── */
+        .typing {
+            display: flex;
+            gap: 4px;
+            padding: 14px 18px;
+            background: var(--ai-bubble);
+            border: 1px solid var(--border);
+            border-radius: 4px 18px 18px 18px;
+            width: fit-content;
+        }
+
+        .typing span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            animation: bounce 1.2s infinite;
+        }
+
+        .typing span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+            }
+
+            30% {
+                transform: translateY(-6px);
+            }
+        }
+
+        /* ─── INPUT BAR ─── */
+        .input-bar {
+            padding: 16px 28px;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-field {
+            flex: 1;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 12px 16px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: 'DM Sans', sans-serif;
+            outline: none;
+            resize: none;
+            max-height: 120px;
+            transition: border-color 0.15s;
+            line-height: 1.5;
+        }
+
+        .input-field:focus {
+            border-color: var(--accent);
+        }
+
+        .input-field::placeholder {
+            color: var(--text2);
+        }
+
+        .send-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            opacity: 0.85;
+            transform: scale(1.05);
+        }
+
+        /* ─── PROGRESS BAR ─── */
+        .progress-bar {
+            height: 3px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            padding: 12px 20px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text2);
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stat-val {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        /* ─── WELCOME ─── */
+        .welcome {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            text-align: center;
+            padding: 40px;
+            color: var(--text2);
+        }
+
+        .welcome-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .welcome h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .welcome p {
+            font-size: 14px;
+            line-height: 1.6;
+            max-width: 400px;
+        }
+
+        .welcome-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .welcome-chip {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+            background: var(--surface2);
+        }
+
+        .welcome-chip:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* TOKEN badge */
+        .token-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            background: rgba(106, 255, 204, 0.08);
+            border: 1px solid rgba(106, 255, 204, 0.15);
+            color: var(--accent3);
+            margin-left: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="logo">
+            <div class="logo-icon">🎓</div>
+            <span>EduHive</span>
+        </div>
+
+        <div class="sidebar-label">Navigation</div>
+        <div class="sidebar-item active">
+            <span>💬</span> Chat IA
+        </div>
+        <div class="sidebar-item">
+            <span>📚</span> Mes sessions
+        </div>
+        <div class="sidebar-item">
+            <span>📊</span> Statistiques
+        </div>
+
+        <div class="sidebar-label" style="margin-top:16px">Sessions récentes</div>
+        <div id="recentSessions"></div>
+
+        <div class="sidebar-bottom">
+            <div class="avatar">DA</div>
+            <div class="user-info">
+                <div class="user-name">douaadh2004</div>
+                <div class="user-role">Étudiant · ING4-IA</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN CHAT -->
+    <main class="chat-main">
+        <header class="chat-header">
+            <h1>🧠 Assistant Mémorisation IA</h1>
+            <div class="status-dot">Gemini 2.5 Flash connecté</div>
+        </header>
+
+        <div class="messages" id="messages">
+            <div class="welcome" id="welcome">
+                <div class="welcome-icon">🧠</div>
+                <h2>Bienvenue sur EduHive Chat IA</h2>
+                <p>Uploade ton cours PDF et enregistre ta récitation vocale. L'IA analysera tes lacunes et générera des
+                    questions ciblées pour t'aider à mémoriser.</p>
+                <div class="welcome-actions">
+                    <div class="welcome-chip" onclick="startSession()">🚀 Nouvelle session</div>
+                    <div class="welcome-chip" onclick="showHelp()">❓ Comment ça marche ?</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-bar">
+            <textarea class="input-field" id="inputField" rows="1"
+                placeholder="Tape un message ou démarre une session d'analyse..." onkeydown="handleKey(event)"
+                oninput="autoResize(this)"></textarea>
+            <button class="send-btn" onclick="sendMessage()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+            </button>
+        </div>
+    </main>
+
+    <script>
+        // ─── CONFIG ───
+        const API_BASE = 'http://localhost:8000';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWExYmQ3MWRlOTQyYjJkMjU1OGJiZDkiLCJpYXQiOjE3NzIyMDk4NTgsImV4cCI6MTc3NDgwMTg1OH0.TYfx29rhgxGj8wtZpc_8Cwmckr5BW6w6Qxb5rAQex8w';
+        const GRAPHQL = `${API_BASE}/graphql`;
+
+        let state = {
+            pdfFile: null, pdfData: null,
+            audioFile: null, audioData: null,
+            recording: false, mediaRecorder: null, audioChunks: [],
+            currentSession: null,
+            answers: {}
+        };
+
+        // ─── HELPERS ───
+        function now() {
+            return new Date().toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function hideWelcome() {
+            const w = document.getElementById('welcome');
+            if (w) w.remove();
+        }
+
+        function scrollDown() {
+            const m = document.getElementById('messages');
+            m.scrollTop = m.scrollHeight;
+        }
+
+        function autoResize(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+        }
+
+        function handleKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        }
+
+        // ─── ADD MESSAGE ───
+        function addMessage(role, content, time = now()) {
+            hideWelcome();
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+
+            const avatarText = role === 'ai' ? '🧠' : 'DA';
+            div.innerHTML = `
+    <div class="msg-avatar">${avatarText}</div>
+    <div class="msg-content">
+      <div class="msg-bubble">${content}</div>
+      <div class="msg-time">${time}</div>
+    </div>`;
+            messages.appendChild(div);
+            scrollDown();
+            return div;
+        }
+
+        function addTyping() {
+            hideWelcome();
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = 'message ai';
+            div.id = 'typing-indicator';
+            div.innerHTML = `
+    <div class="msg-avatar">🧠</div>
+    <div class="msg-content">
+      <div class="typing"><span></span><span></span><span></span></div>
+    </div>`;
+            messages.appendChild(div);
+            scrollDown();
+        }
+
+        function removeTyping() {
+            const t = document.getElementById('typing-indicator');
+            if (t) t.remove();
+        }
+
+        // ─── SEND TEXT MESSAGE ───
+        function sendMessage() {
+            const field = document.getElementById('inputField');
+            const text = field.value.trim();
+            if (!text) return;
+
+            addMessage('user', text);
+            field.value = '';
+            field.style.height = 'auto';
+
+            // Simple réponses contextuelles
+            setTimeout(() => {
+                if (text.toLowerCase().includes('session') || text.toLowerCase().includes('analyser') || text.toLowerCase().includes('commencer')) {
+                    startSession();
+                } else if (text.toLowerCase().includes('aide') || text.toLowerCase().includes('comment')) {
+                    showHelp();
+                } else {
+                    addMessage('ai', `Je suis ton assistant de mémorisation IA. Pour analyser un cours, tape <strong>"nouvelle session"</strong> ou clique sur le bouton. Tu peux aussi me poser des questions sur tes lacunes ! 💡`);
+                }
+            }, 600);
+        }
+
+        // ─── SHOW HELP ───
+        function showHelp() {
+            addMessage('ai', `
+    <strong>Comment ça marche ?</strong><br><br>
+    <strong>1️⃣ Upload ton cours</strong> — Fournis un PDF de cours<br>
+    <strong>2️⃣ Récite ce que tu sais</strong> — Enregistre un vocal ou uploade un audio<br>
+    <strong>3️⃣ Analyse IA</strong> — Gemini compare ta récitation avec le cours<br>
+    <strong>4️⃣ Lacunes détectées</strong> — L'IA identifie ce que tu n'as pas mémorisé<br>
+    <strong>5️⃣ Questions ciblées</strong> — Réponds aux questions pour renforcer ta mémoire<br><br>
+    Prêt ? Tape <strong>"nouvelle session"</strong> pour commencer ! 🚀
+  `);
+        }
+
+        // ─── START SESSION ───
+        function startSession() {
+            state = { ...state, pdfFile: null, pdfData: null, audioFile: null, audioData: null, currentSession: null, answers: {} };
+
+            addMessage('ai', `
+    Super ! Commençons une nouvelle session de mémorisation. 📚<br><br>
+    <strong>Étape 1 :</strong> Upload ton PDF de cours et enregistre (ou uploade) ta récitation vocale.
+  `);
+
+            setTimeout(() => {
+                const messages = document.getElementById('messages');
+                const div = document.createElement('div');
+                div.className = 'message ai';
+                div.innerHTML = `
+      <div class="msg-avatar">🧠</div>
+      <div class="msg-content">
+        <div class="upload-card">
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">📁 Fichiers de session</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Fournis ton PDF de cours et un enregistrement vocal</div>
+
+          <div class="upload-row">
+            <label class="upload-btn" id="pdfLabel">
+              <input type="file" accept=".pdf" onchange="handlePDF(this)"/>
+              📄 Choisir PDF
+            </label>
+            <label class="upload-btn" id="audioLabel">
+              <input type="file" accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm" onchange="handleAudio(this)"/>
+              🎵 Choisir audio
+            </label>
+          </div>
+
+          <div class="upload-row">
+            <button class="record-btn" id="recordBtn" onclick="toggleRecord()">
+              🎙️ Enregistrer vocal
+            </button>
+          </div>
+
+          <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()" disabled>
+            ✨ Analyser avec l'IA
+          </button>
+        </div>
+        <div class="msg-time">${now()}</div>
+      </div>`;
+                messages.appendChild(div);
+                scrollDown();
+            }, 400);
+        }
+
+        // ─── HANDLE PDF ───
+        function handlePDF(input) {
+            const file = input.files[0];
+            if (!file) return;
+            state.pdfFile = file;
+
+            const label = document.getElementById('pdfLabel');
+            label.className = 'upload-btn selected';
+            label.innerHTML = `<input type="file" accept=".pdf" onchange="handlePDF(this)"/> ✅ ${file.name.substring(0, 20)}...`;
+
+            checkReady();
+            addMessage('ai', `PDF chargé : <strong>${file.name}</strong> (${(file.size / 1024).toFixed(1)} KB) ✅`);
+        }
+
+        // ─── HANDLE AUDIO FILE ───
+        function handleAudio(input) {
+            const file = input.files[0];
+            if (!file) return;
+            state.audioFile = file;
+
+            const label = document.getElementById('audioLabel');
+            label.className = 'upload-btn selected';
+            label.innerHTML = `<input type="file" accept="audio/*" onchange="handleAudio(this)"/> ✅ ${file.name.substring(0, 20)}...`;
+
+            checkReady();
+            addMessage('ai', `Audio chargé : <strong>${file.name}</strong> ✅`);
+        }
+
+        // ─── RECORD ───
+        async function toggleRecord() {
+            const btn = document.getElementById('recordBtn');
+
+            if (!state.recording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    state.audioChunks = [];
+                    state.mediaRecorder = new MediaRecorder(stream);
+                    state.mediaRecorder.ondataavailable = e => state.audioChunks.push(e.data);
+                    state.mediaRecorder.onstop = () => {
+                        const blob = new Blob(state.audioChunks, { type: 'audio/webm' });
+                        state.audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
+                        stream.getTracks().forEach(t => t.stop());
+
+                        const label = document.getElementById('audioLabel');
+                        if (label) {
+                            label.className = 'upload-btn selected';
+                            label.innerHTML = `<input type="file" accept="audio/*" onchange="handleAudio(this)"/> ✅ recording.webm`;
+                        }
+                        checkReady();
+                        addMessage('ai', `Enregistrement vocal capturé ✅ Tu peux maintenant lancer l'analyse !`);
+                    };
+                    state.mediaRecorder.start();
+                    state.recording = true;
+                    btn.className = 'record-btn recording';
+                    btn.innerHTML = '⏹️ Arrêter l\'enregistrement';
+                } catch (e) {
+                    addMessage('ai', `❌ Impossible d'accéder au microphone. Vérifie les permissions du navigateur.`);
+                }
+            } else {
+                state.mediaRecorder.stop();
+                state.recording = false;
+                btn.className = 'record-btn';
+                btn.innerHTML = '🎙️ Enregistrer vocal';
+            }
+        }
+
+        function checkReady() {
+            const btn = document.getElementById('analyzeBtn');
+            if (btn && state.pdfFile && state.audioFile) {
+                btn.disabled = false;
+            }
+        }
+
+        // ─── RUN ANALYSIS ───
+        async function runAnalysis() {
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            if (analyzeBtn) analyzeBtn.disabled = true;
+
+            addMessage('user', `🚀 Lancer l'analyse IA`);
+            addTyping();
+
+            try {
+                // UPLOAD PDF
+                addMessage('ai', `📄 <strong>Étape 1/4</strong> — Upload du PDF en cours...`);
+                const pdfForm = new FormData();
+                pdfForm.append('pdf', state.pdfFile);
+
+                const pdfRes = await fetch(`${API_BASE}/memory/pdf`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${TOKEN}` },
+                    body: pdfForm
+                });
+                const pdfJson = await pdfRes.json();
+                if (!pdfJson.success) throw new Error('Erreur upload PDF: ' + JSON.stringify(pdfJson));
+                state.pdfData = pdfJson.data;
+                addMessage('ai', `✅ PDF uploadé avec succès !`);
+
+                // UPLOAD AUDIO
+                addMessage('ai', `🎤 <strong>Étape 2/4</strong> — Upload de l'audio en cours...`);
+                const audioForm = new FormData();
+                audioForm.append('audio', state.audioFile);
+
+                const audioRes = await fetch(`${API_BASE}/memory/audio`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${TOKEN}` },
+                    body: audioForm
+                });
+                const audioJson = await audioRes.json();
+                if (!audioJson.success) throw new Error('Erreur upload audio: ' + JSON.stringify(audioJson));
+                state.audioData = audioJson.data;
+                addMessage('ai', `✅ Audio uploadé avec succès !`);
+
+                // ANALYSE IA
+                addMessage('ai', `🧠 <strong>Étape 3/4</strong> — Analyse IA en cours... (peut prendre 15-30 secondes)`);
+
+                const gqlRes = await fetch(GRAPHQL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        query: `mutation CreateSession($title:String!,$pdfUrl:String!,$pdfPublicId:String!,$fileName:String!,$fileSize:Int!,$audioUrl:String!,$audioPublicId:String!,$audioDuration:Int!) {
+          createMemorySession(title:$title,pdfUrl:$pdfUrl,pdfPublicId:$pdfPublicId,fileName:$fileName,fileSize:$fileSize,audioUrl:$audioUrl,audioPublicId:$audioPublicId,audioDuration:$audioDuration) {
+            id status
+            questions { id questionText type options isLacune difficulty }
+            lacunes { topic severity description }
+            stats { totalQuestions globalScore lacunesCount }
+            aiMeta { totalTokensUsed }
+          }
+        }`,
+                        variables: {
+                            title: `Session ${new Date().toLocaleDateString('fr')}`,
+                            pdfUrl: state.pdfData.url,
+                            pdfPublicId: state.pdfData.publicId,
+                            fileName: state.pdfData.fileName,
+                            fileSize: state.pdfData.fileSize,
+                            audioUrl: state.audioData.url,
+                            audioPublicId: state.audioData.publicId,
+                            audioDuration: state.audioData.duration || 30
+                        }
+                    })
+                });
+
+                const gqlJson = await gqlRes.json();
+                if (gqlJson.errors) throw new Error(gqlJson.errors[0].message);
+
+                state.currentSession = gqlJson.data.createMemorySession;
+                removeTyping();
+                showResults(state.currentSession);
+
+            } catch (err) {
+                removeTyping();
+                addMessage('ai', `❌ <strong>Erreur :</strong> ${err.message}<br><br>Vérifie que le serveur tourne sur <code>localhost:8000</code>.`);
+                if (analyzeBtn) analyzeBtn.disabled = false;
+            }
+        }
+
+        // ─── SHOW RESULTS ───
+        function showResults(session) {
+            const { lacunes, questions, stats, aiMeta } = session;
+
+            addMessage('ai', `🎉 <strong>Analyse terminée !</strong><span class="token-badge">⚡ ${aiMeta.totalTokensUsed.toLocaleString()} tokens</span><br><br>
+    J'ai analysé ton cours et ta récitation. Voici les résultats de ton évaluation.`);
+
+            // Lacunes card
+            setTimeout(() => {
+                const messages = document.getElementById('messages');
+                const div = document.createElement('div');
+                div.className = 'message ai';
+
+                const lacunesHtml = lacunes.map(l => `
+      <div class="lacune-item">
+        <div class="severity-dot ${l.severity}"></div>
+        <div class="lacune-text">
+          <div class="lacune-topic">${l.topic}</div>
+          <div class="lacune-desc">${l.description || severityLabel(l.severity)}</div>
+        </div>
+      </div>`).join('');
+
+                const progress = Math.max(0, 100 - lacunes.filter(l => l.severity === 'high').length * 25);
+
+                div.innerHTML = `
+      <div class="msg-avatar">🧠</div>
+      <div class="msg-content" style="max-width:680px">
+        <div class="results-card">
+          <div class="results-header">
+            <div class="results-title">🔍 Lacunes détectées</div>
+            <div class="score-badge">${lacunes.length} lacune${lacunes.length > 1 ? 's' : ''}</div>
+          </div>
+          <div style="padding:12px 20px 0">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-bottom:6px">
+              <span>Niveau de maîtrise estimé</span><span>${progress}%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
+          </div>
+          <div class="lacunes-list">${lacunesHtml}</div>
+          <div class="stats-row">
+            <div class="stat-item">📝 <span class="stat-val">${stats.totalQuestions}</span> questions</div>
+            <div class="stat-item">⚠️ <span class="stat-val">${stats.lacunesCount}</span> lacunes</div>
+            <div class="stat-item">🎯 Score: <span class="stat-val">${stats.globalScore}/100</span></div>
+          </div>
+        </div>
+        <div class="msg-time">${now()}</div>
+      </div>`;
+                messages.appendChild(div);
+                scrollDown();
+            }, 500);
+
+            // Questions
+            setTimeout(() => {
+                addMessage('ai', `❓ Voici <strong>${questions.length} questions ciblées</strong> pour renforcer ta mémorisation. Réponds à chacune !`);
+
+                const messages = document.getElementById('messages');
+                const div = document.createElement('div');
+                div.className = 'message ai';
+
+                const questionsHtml = questions.map((q, i) => {
+                    let answerHtml = '';
+                    if (q.type === 'mcq' && q.options?.length > 0) {
+                        answerHtml = `<div class="mcq-options">${q.options.map((opt, j) => `
+          <label class="mcq-option" id="opt-${q.id}-${j}">
+            <input type="radio" name="q-${q.id}" value="${opt}" onchange="selectMCQ('${q.id}', '${opt}', ${j})"/>
+            ${opt}
+          </label>`).join('')}</div>`;
+                    } else if (q.type === 'true_false') {
+                        answerHtml = `<div class="mcq-options">
+          <label class="mcq-option" id="opt-${q.id}-0">
+            <input type="radio" name="q-${q.id}" value="Vrai" onchange="selectMCQ('${q.id}', 'Vrai', 0)"/> Vrai
+          </label>
+          <label class="mcq-option" id="opt-${q.id}-1">
+            <input type="radio" name="q-${q.id}" value="Faux" onchange="selectMCQ('${q.id}', 'Faux', 1)"/> Faux
+          </label>
+        </div>`;
+                    } else {
+                        answerHtml = `<textarea class="answer-input" id="ans-${q.id}" rows="2" placeholder="Ta réponse..."></textarea>`;
+                    }
+
+                    return `
+        <div class="question-card" id="qcard-${q.id}">
+          <div class="question-header">
+            <span class="question-type">${q.type === 'mcq' ? 'QCM' : q.type === 'true_false' ? 'Vrai / Faux' : 'Question ouverte'}</span>
+            <span style="font-size:11px;color:var(--text2)">${q.difficulty || 'medium'}</span>
+          </div>
+          <div class="question-text"><strong>Q${i + 1}.</strong> ${q.questionText}</div>
+          ${answerHtml}
+          <button class="submit-answer-btn" onclick="submitAnswer('${session.id}', '${q.id}', ${i})">
+            Valider ma réponse →
+          </button>
+          <div id="result-${q.id}"></div>
+        </div>`;
+                }).join('');
+
+                div.innerHTML = `
+      <div class="msg-avatar">🧠</div>
+      <div class="msg-content" style="max-width:680px">
+        <div class="results-card">
+          <div class="results-header">
+            <div class="results-title">❓ Questions de révision</div>
+          </div>
+          <div class="questions-section">${questionsHtml}</div>
+        </div>
+        <div class="msg-time">${now()}</div>
+      </div>`;
+                messages.appendChild(div);
+                scrollDown();
+            }, 1200);
+        }
+
+        function severityLabel(s) {
+            return s === 'high' ? 'Thème non maîtrisé' : s === 'medium' ? 'Thème partiellement compris' : 'Thème à revoir';
+        }
+
+        function selectMCQ(qId, val, idx) {
+            // Déselectionne tout
+            document.querySelectorAll(`[id^="opt-${qId}-"]`).forEach(el => el.classList.remove('selected'));
+            document.getElementById(`opt-${qId}-${idx}`)?.classList.add('selected');
+            state.answers[qId] = val;
+        }
+
+        // ─── SUBMIT ANSWER ───
+        async function submitAnswer(sessionId, questionId, idx) {
+            if (!state.currentSession) return;
+
+            const q = state.currentSession.questions[idx];
+            let answer = state.answers[questionId];
+
+            if (!answer) {
+                const textarea = document.getElementById(`ans-${questionId}`);
+                if (textarea) answer = textarea.value.trim();
+            }
+
+            if (!answer) {
+                addMessage('ai', `⚠️ Écris ta réponse avant de valider !`);
+                return;
+            }
+
+            const card = document.getElementById(`qcard-${questionId}`);
+            const resultDiv = document.getElementById(`result-${questionId}`);
+            const submitBtn = card?.querySelector('.submit-answer-btn');
+            if (submitBtn) submitBtn.disabled = true;
+
+            resultDiv.innerHTML = `<div style="font-size:12px;color:var(--text2);padding:8px 0">Évaluation en cours...</div>`;
+
+            try {
+                const res = await fetch(GRAPHQL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        query: `mutation Submit($sessionId:ID!,$questionId:ID!,$answerText:String!) {
+          submitAnswer(sessionId:$sessionId,questionId:$questionId,answerText:$answerText) {
+            id status
+            answers { questionId isCorrect scoreObtained aiFeedback hint }
+            stats { answeredQuestions correctAnswers globalScore }
+          }
+        }`,
+                        variables: { sessionId, questionId, answerText: answer }
+                    })
+                });
+
+                const json = await res.json();
+                if (json.errors) throw new Error(json.errors[0].message);
+
+                const session = json.data.submitAnswer;
+                const myAnswer = session.answers.find(a => a.questionId === questionId);
+
+                if (myAnswer) {
+                    const isOk = myAnswer.isCorrect;
+                    resultDiv.innerHTML = `
+        <div class="answer-result ${isOk ? 'correct' : 'incorrect'}">
+          ${isOk ? '✅' : '❌'} <strong>${isOk ? 'Correct !' : 'Incorrect'}</strong> — Score: ${myAnswer.scoreObtained}/100<br>
+          ${myAnswer.aiFeedback}<br>
+          ${myAnswer.hint ? `<br>💡 <em>${myAnswer.hint}</em>` : ''}
+        </div>`;
+                    card?.classList.add('answered');
+                    state.currentSession = { ...state.currentSession, ...session };
+
+                    // Mise à jour score
+                    addMessage('ai', `${isOk ? '🎉' : '💪'} ${myAnswer.aiFeedback} <br><br>Score global : <strong>${session.stats.globalScore}/100</strong> (${session.stats.answeredQuestions}/${state.currentSession.questions.length} répondues)`);
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `<div style="color:#ff7799;font-size:12px;padding:8px 0">❌ Erreur: ${err.message}</div>`;
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        }
+
+        // ─── INIT ───
+        document.getElementById('inputField').focus();
+    </script>
+</body>
+
+</html>
