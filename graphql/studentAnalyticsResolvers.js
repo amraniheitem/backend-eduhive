@@ -73,9 +73,14 @@ const studentAnalyticsResolvers = {
 
             const allStudents = await Student.find().populate('enrolledSubjects');
 
+            // Filtrer les étudiants sans user valide
+            const validAllStudents = allStudents.filter(
+                s => s.userId !== null && s.userId !== undefined
+            );
+
             let atRiskCount = 0;
 
-            for (const student of allStudents) {
+            for (const student of validAllStudents) {
                 const progress = await VideoProgress.find({ student: student._id });
                 const avgProgress = progress.length > 0
                     ? progress.reduce((sum, p) => sum + (p.completionPercentage || 0), 0) / progress.length
@@ -294,7 +299,10 @@ const studentAnalyticsResolvers = {
 
             const atRiskStudents = [];
 
-            for (const student of students) {
+            // Filtrer les étudiants sans userId
+            const validStudents = students.filter(s => s.userId !== null && s.userId !== undefined);
+
+            for (const student of validStudents) {
                 const progress = await VideoProgress.find({ student: student._id });
                 const avgProgress = progress.length > 0
                     ? progress.reduce((sum, p) => sum + (p.completionPercentage || 0), 0) / progress.length
@@ -326,7 +334,7 @@ const studentAnalyticsResolvers = {
                             studentId: student._id,
                             firstName: student.userId?.firstName || 'Inconnu',
                             lastName: student.userId?.lastName || '',
-                            email: student.userId?.email || 'N/A',
+                            email: student.userId?.email || 'email@inconnu.com',
                             enrolledCourses: student.enrolledSubjects?.length || 0,
                             averageProgress: parseFloat(avgProgress.toFixed(1)),
                             lastActivity: lastActivity?.lastWatchedAt || null,
@@ -370,8 +378,11 @@ const studentAnalyticsResolvers = {
 
             const total = await Student.countDocuments(query);
 
+            // Filtrer les étudiants sans userId
+            const validStudents = students.filter(s => s.userId !== null && s.userId !== undefined);
+
             const performanceList = await Promise.all(
-                students.map(async (student) => {
+                validStudents.map(async (student) => {
                     const progress = await VideoProgress.find({ student: student._id });
                     const avgProgress = progress.length > 0
                         ? progress.reduce((sum, p) => sum + (p.completionPercentage || 0), 0) / progress.length
@@ -398,15 +409,16 @@ const studentAnalyticsResolvers = {
 
                     return {
                         studentId: student._id,
+                        userId: student.userId?._id,
                         firstName: student.userId?.firstName || 'Inconnu',
                         lastName: student.userId?.lastName || '',
-                        email: student.userId?.email || 'N/A',
-                        educationLevel: student.educationLevel,
+                        email: student.userId?.email || 'email@inconnu.com',
+                        educationLevel: student.educationLevel || '',
                         enrolledCourses: student.enrolledSubjects?.length || 0,
                         completedCourses,
                         averageProgress: parseFloat(avgProgress.toFixed(1)),
                         averageGrade: parseFloat(averageGrade.toFixed(1)),
-                        lastActivity: lastActivity?.lastWatchedAt || null,
+                        lastActivity: lastActivity?.lastWatchedAt || student.updatedAt || new Date(),
                         status: student.userId?.status || 'INACTIVE'
                     };
                 })
