@@ -78,6 +78,42 @@ const uploadPDFToCloudinary = async (fileStream) => {
 };
 
 /**
+ * Upload image thumbnail vers Cloudinary
+ * Redimensionne automatiquement en 640x360 (format 16:9 comme YouTube)
+ */
+const uploadImageToCloudinary = async (fileStream) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: 'image',
+        folder: 'ed-platform/thumbnails',
+        transformation: [
+          { width: 640, height: 360, crop: 'fill', gravity: 'center' },
+          { quality: 'auto', fetch_format: 'auto' }
+        ]
+      },
+      (error, result) => {
+        if (error) {
+          console.error('❌ Erreur upload image Cloudinary:', error);
+          reject(error);
+        } else {
+          console.log('✅ Image uploadée sur Cloudinary:', result.secure_url);
+          resolve({
+            url: result.secure_url,
+            publicId: result.public_id,
+            fileSize: result.bytes || 0,
+            width: result.width || 0,
+            height: result.height || 0
+          });
+        }
+      }
+    );
+
+    streamifier.createReadStream(fileStream).pipe(uploadStream);
+  });
+};
+
+/**
  * Supprimer fichier de Cloudinary
  */
 const deleteFileFromCloudinary = async (publicId, resourceType = 'video') => {
@@ -93,8 +129,18 @@ const deleteFileFromCloudinary = async (publicId, resourceType = 'video') => {
   }
 };
 
+/**
+ * Générer l'URL du thumbnail auto depuis une vidéo Cloudinary
+ * Extrait le frame à 1 seconde — aucun fichier supplémentaire stocké
+ */
+const generateVideoThumbnailUrl = (publicId) => {
+  return `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/so_1,f_jpg,w_640,h_360,c_fill/${publicId}.jpg`;
+};
+
 module.exports = {
   uploadVideoToCloudinary,
   uploadPDFToCloudinary,
-  deleteFileFromCloudinary
+  uploadImageToCloudinary,
+  deleteFileFromCloudinary,
+  generateVideoThumbnailUrl
 };

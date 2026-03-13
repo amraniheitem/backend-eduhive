@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
-  // INFORMATIONS COMMUNES (obligatoires pour tous)
   email: {
     type: String,
     required: true,
