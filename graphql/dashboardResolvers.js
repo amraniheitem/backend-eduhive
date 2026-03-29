@@ -6,7 +6,6 @@ const Rating = require('../models/rating');
 const VideoProgress = require('../models/VideoProgress');
 const User = require('../models/User');
 
-// Import des fonctions utilitaires
 const {
     calculateChange,
     getPreviousPeriod,
@@ -23,7 +22,6 @@ const dashboardResolvers = {
         dashboardKPIs: async (_, { dateRange }, context) => {
             const { startDate, endDate } = dateRange || getDefaultDateRange();
 
-            // 1.1 - INSCRIPTIONS TOTALES
             const totalStudents = await Student.countDocuments({
                 createdAt: { $lte: endDate }
             });
@@ -36,12 +34,8 @@ const dashboardResolvers = {
                 }
             });
 
-            const enrollmentChange = calculateChange(
-                totalStudents,
-                previousStudents
-            );
+            const enrollmentChange = calculateChange(totalStudents, previousStudents);
 
-            // 1.2 - TAUX DE RÉTENTION
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -53,7 +47,6 @@ const dashboardResolvers = {
                 ? (activeStudents.length / totalStudents) * 100
                 : 0;
 
-            // Rétention période précédente
             const previousActiveStudents = await VideoProgress.distinct('student', {
                 lastWatchedAt: {
                     $gte: new Date(thirtyDaysAgo.getTime() - 30 * 24 * 60 * 60 * 1000),
@@ -67,7 +60,6 @@ const dashboardResolvers = {
 
             const retentionChange = retentionRate - previousRetention;
 
-            // 1.3 - REVENUS TOTAUX
             const revenueData = await Transaction.aggregate([
                 {
                     $match: {
@@ -76,12 +68,7 @@ const dashboardResolvers = {
                         createdAt: { $gte: startDate, $lte: endDate }
                     }
                 },
-                {
-                    $group: {
-                        _id: null,
-                        total: { $sum: '$amount' }
-                    }
-                }
+                { $group: { _id: null, total: { $sum: '$amount' } } }
             ]);
 
             const totalRevenue = revenueData[0]?.total || 0;
@@ -91,56 +78,29 @@ const dashboardResolvers = {
                     $match: {
                         status: 'COMPLETED',
                         type: { $in: ['PURCHASE', 'SUBJECT_BUY', 'AI_USE'] },
-                        createdAt: {
-                            $gte: previousPeriod.start,
-                            $lte: previousPeriod.end
-                        }
+                        createdAt: { $gte: previousPeriod.start, $lte: previousPeriod.end }
                     }
                 },
-                {
-                    $group: {
-                        _id: null,
-                        total: { $sum: '$amount' }
-                    }
-                }
+                { $group: { _id: null, total: { $sum: '$amount' } } }
             ]);
 
             const previousRevenue = previousRevenueData[0]?.total || 0;
             const revenueChange = calculateChange(totalRevenue, previousRevenue);
 
-            // 1.4 - SATISFACTION ÉTUDIANTE
             const satisfactionData = await Rating.aggregate([
                 {
-                    $match: {
-                        createdAt: { $gte: startDate, $lte: endDate }
-                    }
+                    $match: { createdAt: { $gte: startDate, $lte: endDate } }
                 },
-                {
-                    $group: {
-                        _id: null,
-                        avgRating: { $avg: '$rating' },
-                        count: { $sum: 1 }
-                    }
-                }
+                { $group: { _id: null, avgRating: { $avg: '$rating' }, count: { $sum: 1 } } }
             ]);
 
             const averageRating = satisfactionData[0]?.avgRating || 0;
 
             const previousSatisfactionData = await Rating.aggregate([
                 {
-                    $match: {
-                        createdAt: {
-                            $gte: previousPeriod.start,
-                            $lte: previousPeriod.end
-                        }
-                    }
+                    $match: { createdAt: { $gte: previousPeriod.start, $lte: previousPeriod.end } }
                 },
-                {
-                    $group: {
-                        _id: null,
-                        avgRating: { $avg: '$rating' }
-                    }
-                }
+                { $group: { _id: null, avgRating: { $avg: '$rating' } } }
             ]);
 
             const previousRating = previousSatisfactionData[0]?.avgRating || 0;
@@ -198,45 +158,28 @@ const dashboardResolvers = {
             const startDate = new Date();
             startDate.setMonth(startDate.getMonth() - months);
 
-            // Enrollments par mois
             const enrollments = await Student.aggregate([
-                {
-                    $match: {
-                        createdAt: { $gte: startDate, $lte: endDate }
-                    }
-                },
+                { $match: { createdAt: { $gte: startDate, $lte: endDate } } },
                 {
                     $group: {
-                        _id: {
-                            year: { $year: '$createdAt' },
-                            month: { $month: '$createdAt' }
-                        },
+                        _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
                         count: { $sum: 1 }
                     }
                 },
                 { $sort: { '_id.year': 1, '_id.month': 1 } }
             ]);
 
-            // Completion moyenne par mois
             const completions = await VideoProgress.aggregate([
-                {
-                    $match: {
-                        lastWatchedAt: { $gte: startDate, $lte: endDate }
-                    }
-                },
+                { $match: { lastWatchedAt: { $gte: startDate, $lte: endDate } } },
                 {
                     $group: {
-                        _id: {
-                            year: { $year: '$lastWatchedAt' },
-                            month: { $month: '$lastWatchedAt' }
-                        },
+                        _id: { year: { $year: '$lastWatchedAt' }, month: { $month: '$lastWatchedAt' } },
                         avgCompletion: { $avg: '$completionPercentage' }
                     }
                 },
                 { $sort: { '_id.year': 1, '_id.month': 1 } }
             ]);
 
-            // Revenus par mois
             const revenues = await Transaction.aggregate([
                 {
                     $match: {
@@ -247,17 +190,13 @@ const dashboardResolvers = {
                 },
                 {
                     $group: {
-                        _id: {
-                            year: { $year: '$createdAt' },
-                            month: { $month: '$createdAt' }
-                        },
+                        _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
                         total: { $sum: '$amount' }
                     }
                 },
                 { $sort: { '_id.year': 1, '_id.month': 1 } }
             ]);
 
-            // Merge les données
             const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
                 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
@@ -286,7 +225,7 @@ const dashboardResolvers = {
                     year,
                     enrollment,
                     completion: parseFloat(completion.toFixed(1)),
-                    revenue: parseFloat((revenue / 1000).toFixed(1)) // En K€
+                    revenue: parseFloat((revenue / 1000).toFixed(1))
                 });
             }
 
@@ -297,32 +236,22 @@ const dashboardResolvers = {
         // 3️⃣ TOP COURS PERFORMANTS
         // ==========================================
         topPerformingCourses: async (_, { limit = 10 }, context) => {
-            const subjects = await Subject.find({ status: 'ACTIVE' })
-                .populate('enrolledStudents');
+            const subjects = await Subject.find({ status: 'ACTIVE' });
 
             const enrichedSubjects = await Promise.all(
                 subjects.map(async (subject) => {
+                    // Compter les étudiants inscrits via agrégation
                     const studentsCount = subject.enrolledStudents?.length || 0;
 
-                    // Note moyenne
                     const ratingsData = await Rating.aggregate([
                         {
-                            $match: {
-                                subject: subject._id,
-                                targetType: 'SUBJECT'
-                            }
+                            $match: { subject: subject._id, targetType: 'SUBJECT' }
                         },
-                        {
-                            $group: {
-                                _id: null,
-                                avgRating: { $avg: '$rating' }
-                            }
-                        }
+                        { $group: { _id: null, avgRating: { $avg: '$rating' } } }
                     ]);
 
                     const averageRating = ratingsData[0]?.avgRating || 0;
 
-                    // Revenus
                     const revenueData = await Transaction.aggregate([
                         {
                             $match: {
@@ -331,22 +260,15 @@ const dashboardResolvers = {
                                 status: 'COMPLETED'
                             }
                         },
-                        {
-                            $group: {
-                                _id: null,
-                                total: { $sum: '$amount' }
-                            }
-                        }
+                        { $group: { _id: null, total: { $sum: '$amount' } } }
                     ]);
 
                     const revenue = revenueData[0]?.total || 0;
 
-                    // Statut performance
                     let status = 'LOW';
                     if (averageRating >= 4.5) status = 'HIGH';
                     else if (averageRating >= 3.5) status = 'MEDIUM';
 
-                    // Score de performance combiné
                     const performanceScore = (studentsCount * 0.4) + (averageRating * 100 * 0.6);
 
                     return {
@@ -373,32 +295,41 @@ const dashboardResolvers = {
             const twoWeeksAgo = new Date();
             twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-            const subjects = await Subject.find({ status: 'ACTIVE' })
-                .populate('enrolledStudents');
+            // FIX: Ne pas populate 'enrolledStudents' comme un modèle séparé
+            // On accède directement aux champs embarqués dans le document Subject
+            const subjects = await Subject.find({ status: 'ACTIVE' });
 
             const atRiskBySubject = await Promise.all(
                 subjects.map(async (subject) => {
                     let studentsAtRisk = 0;
 
-                    for (const enrollment of subject.enrolledStudents || []) {
-                        const { student, enrolledAt, progress } = enrollment;
+                    const enrolledStudents = subject.enrolledStudents || [];
+
+                    for (const enrollment of enrolledStudents) {
+                        // FIX: Utiliser studentId (ObjectId stocké) au lieu de student (non populé)
+                        const studentId = enrollment.studentId;
+                        const enrolledAt = enrollment.enrolledAt;
+                        const progress = enrollment.progress || 0;
+
+                        // Garde-fou: skip si studentId manquant
+                        if (!studentId) continue;
 
                         // Seulement les étudiants inscrits depuis >14 jours
-                        if (enrolledAt > twoWeeksAgo) continue;
+                        if (enrolledAt && enrolledAt > twoWeeksAgo) continue;
 
                         // Progression vidéo
                         const videoProgress = await VideoProgress.find({
-                            student: student._id || student,
+                            student: studentId,
                             subject: subject._id
                         });
 
                         const avgProgress = videoProgress.length > 0
-                            ? videoProgress.reduce((sum, v) => sum + v.completionPercentage, 0) / videoProgress.length
+                            ? videoProgress.reduce((sum, v) => sum + (v.completionPercentage || 0), 0) / videoProgress.length
                             : 0;
 
                         // Dernière activité
                         const lastActivity = await VideoProgress.findOne({
-                            student: student._id || student,
+                            student: studentId,
                             subject: subject._id
                         }).sort('-lastWatchedAt');
 
@@ -419,7 +350,6 @@ const dashboardResolvers = {
 
                     if (studentsAtRisk === 0) return null;
 
-                    // Sévérité
                     let severity = 'LOW';
                     if (studentsAtRisk > 20) severity = 'HIGH';
                     else if (studentsAtRisk >= 10) severity = 'MEDIUM';
@@ -451,30 +381,27 @@ const dashboardResolvers = {
                 'Arts': 'Palette'
             };
 
-            const categories = await Subject.distinct('category', {
-                status: 'ACTIVE'
-            });
+            const categories = await Subject.distinct('category', { status: 'ACTIVE' });
 
             const departmentStats = await Promise.all(
                 categories.map(async (category) => {
-                    const subjects = await Subject.find({
-                        category,
-                        status: 'ACTIVE'
-                    }).populate('enrolledStudents').populate('assignedTeachers');
+                    // FIX: Ne pas populate enrolledStudents/assignedTeachers comme modèles séparés
+                    const subjects = await Subject.find({ category, status: 'ACTIVE' });
 
                     const subjectIds = subjects.map(s => s._id);
 
-                    // 1. Étudiants uniques
+                    // Étudiants uniques via les subdocuments embarqués
                     const uniqueStudents = new Set();
                     subjects.forEach(subject => {
-                        subject.enrolledStudents?.forEach(enrollment => {
-                            const studentId = enrollment.studentId?._id || enrollment.studentId;
-                            uniqueStudents.add(studentId.toString());
+                        (subject.enrolledStudents || []).forEach(enrollment => {
+                            // FIX: utiliser studentId (ObjectId) pas enrollment.studentId?._id
+                            if (enrollment.studentId) {
+                                uniqueStudents.add(enrollment.studentId.toString());
+                            }
                         });
                     });
                     const studentsCount = uniqueStudents.size;
 
-                    // 2. Rétention
                     const thirtyDaysAgo = new Date();
                     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -487,26 +414,15 @@ const dashboardResolvers = {
                         ? (activeStudents.length / studentsCount) * 100
                         : 0;
 
-                    // 3. Satisfaction
                     const satisfactionData = await Rating.aggregate([
-                        {
-                            $match: {
-                                subject: { $in: subjectIds }
-                            }
-                        },
-                        {
-                            $group: {
-                                _id: null,
-                                avgRating: { $avg: '$rating' }
-                            }
-                        }
+                        { $match: { subject: { $in: subjectIds } } },
+                        { $group: { _id: null, avgRating: { $avg: '$rating' } } }
                     ]);
 
                     const satisfaction = satisfactionData[0]?.avgRating
                         ? (satisfactionData[0].avgRating / 5) * 100
                         : 0;
 
-                    // 4. Revenus
                     const revenueData = await Transaction.aggregate([
                         {
                             $match: {
@@ -515,30 +431,23 @@ const dashboardResolvers = {
                                 status: 'COMPLETED'
                             }
                         },
-                        {
-                            $group: {
-                                _id: null,
-                                total: { $sum: '$amount' }
-                            }
-                        }
+                        { $group: { _id: null, total: { $sum: '$amount' } } }
                     ]);
 
                     const revenue = revenueData[0]?.total || 0;
-
-                    // 5. Cours actifs
                     const activeCourses = subjects.length;
 
-                    // 6. Enseignants uniques
+                    // Enseignants uniques via subdocuments
                     const uniqueTeachers = new Set();
                     subjects.forEach(subject => {
-                        subject.assignedTeachers?.forEach(assignment => {
-                            const teacherId = assignment.teacherId?._id || assignment.teacherId;
-                            uniqueTeachers.add(teacherId.toString());
+                        (subject.assignedTeachers || []).forEach(assignment => {
+                            if (assignment.teacherId) {
+                                uniqueTeachers.add(assignment.teacherId.toString());
+                            }
                         });
                     });
                     const teachersCount = uniqueTeachers.size;
 
-                    // 7. Taux de réussite
                     const completedStudents = await VideoProgress.distinct('student', {
                         subject: { $in: subjectIds },
                         completed: true
@@ -580,7 +489,7 @@ const dashboardResolvers = {
             })
                 .sort('-createdAt')
                 .limit(limit)
-                .populate('student')
+                .populate('student')   // student = ref User
                 .populate('subject');
 
             enrollments.forEach(tx => {
@@ -598,26 +507,38 @@ const dashboardResolvers = {
             });
 
             // 2. Complétions
+            // FIX: populate en 2 étapes séparées au lieu du populate imbriqué student.user
             const completions = await VideoProgress.find({
                 completed: true,
                 completionPercentage: 100
             })
                 .sort('-lastWatchedAt')
                 .limit(limit)
-                .populate({
-                    path: 'student',
-                    populate: { path: 'user' }
-                })
+                .populate('student')   // 1ère étape: populate Student
                 .populate('subject');
 
+            // 2ème étape: populate User depuis les Students récupérés
+            // FIX: utiliser Student.populate() pour le populate imbriqué
+            await Student.populate(completions, {
+                path: 'student.user',  // student est un doc Student, user est ref User dans Student
+                model: 'User'
+            });
+
             completions.forEach(progress => {
-                if (progress.student?.user && progress.subject) {
+                // FIX: garder une référence sûre
+                const student = progress.student;
+                const studentUser = student?.user || null;
+
+                if (progress.subject) {
+                    const firstName = studentUser?.firstName || 'Étudiant';
+                    const lastName = studentUser?.lastName || '';
+
                     activities.push({
                         id: `completion_${progress._id}`,
                         type: 'COMPLETION',
-                        description: `${progress.student.user.firstName} ${progress.student.user.lastName} a terminé une vidéo du cours ${progress.subject.name}`,
+                        description: `${firstName} ${lastName} a terminé une vidéo du cours ${progress.subject.name}`,
                         timestamp: progress.lastWatchedAt,
-                        user: progress.student.user,
+                        user: studentUser,
                         subject: progress.subject,
                         metadata: { videoId: progress.videoId }
                     });
@@ -647,9 +568,7 @@ const dashboardResolvers = {
             });
 
             // 4. Retraits
-            const withdrawals = await Transaction.find({
-                type: 'WITHDRAWAL'
-            })
+            const withdrawals = await Transaction.find({ type: 'WITHDRAWAL' })
                 .sort('-createdAt')
                 .limit(limit)
                 .populate('teacher');
@@ -684,30 +603,39 @@ const dashboardResolvers = {
             });
 
             // 6. Nouvelles évaluations
+            // FIX: même approche 2 étapes pour ratings
             const ratings = await Rating.find()
                 .sort('-createdAt')
                 .limit(limit)
-                .populate({
-                    path: 'student',
-                    populate: { path: 'user' }
-                })
+                .populate('student')   // 1ère étape: populate Student
                 .populate('subject');
 
+            // 2ème étape: populate User depuis Student
+            await Student.populate(ratings, {
+                path: 'student.user',
+                model: 'User'
+            });
+
             ratings.forEach(rating => {
-                if (rating.student?.user && rating.subject) {
+                const student = rating.student;
+                const studentUser = student?.user || null;
+
+                if (rating.subject) {
+                    const firstName = studentUser?.firstName || 'Étudiant';
+                    const lastName = studentUser?.lastName || '';
+
                     activities.push({
                         id: `rating_${rating._id}`,
                         type: 'RATING_SUBMITTED',
-                        description: `${rating.student.user.firstName} ${rating.student.user.lastName} a noté ${rating.subject.name} (${rating.rating}/5)`,
+                        description: `${firstName} ${lastName} a noté ${rating.subject.name} (${rating.rating}/5)`,
                         timestamp: rating.createdAt,
-                        user: rating.student.user,
+                        user: studentUser,
                         subject: rating.subject,
                         metadata: { rating: rating.rating }
                     });
                 }
             });
 
-            // Trier par date et limiter
             activities.sort((a, b) => b.timestamp - a.timestamp);
             return activities.slice(0, limit);
         }
