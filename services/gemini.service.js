@@ -1,36 +1,97 @@
 // services/gemini.service.js
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
 
-// ========================================
-// CONFIGURATION CLOUDINARY (pour URL signées)
-// ========================================
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// ========================================
-// INITIALISATION GEMINI
-// ========================================
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-console.log("🔥 gemini.service.js VERSION CORRIGÉE chargée");
+
+// ========================================
+// MODÈLES AVEC FALLBACK AUTOMATIQUE
+// ========================================
+const MODELS_FALLBACK = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-001",
+    "gemini-2.0-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
+];
+
+let currentModelIndex = 0;
+
+function getModel() {
+    const modelName = MODELS_FALLBACK[currentModelIndex];
+    console.log(`📌 Modèle actif: ${modelName}`);
+    return genAI.getGenerativeModel({ model: modelName });
+}
+
+// Wrapper intelligent : retry sur 429, rotation sur quota/404
+async function callWithRetry(callFn, maxRetries = 12) {
+    const exhaustedModels = new Set();
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const modelName = MODELS_FALLBACK[currentModelIndex];
+
+        // Si tous les modèles sont épuisés, attendre puis réinitialiser
+        if (exhaustedModels.size >= MODELS_FALLBACK.length) {
+            console.log(`⏳ Tous les modèles épuisés, attente de 40s...`);
+            await new Promise((r) => setTimeout(r, 40000));
+            exhaustedModels.clear();
+        }
+
+        // Sauter les modèles déjà épuisés
+        if (exhaustedModels.has(modelName)) {
+            currentModelIndex = (currentModelIndex + 1) % MODELS_FALLBACK.length;
+            continue;
+        }
+
+        try {
+            console.log(`🔄 Tentative ${attempt + 1}/${maxRetries} avec ${modelName}...`);
+            return await callFn(getModel());
+        } catch (err) {
+            const msg = err.message || "";
+
+            // 404 / not found → modèle inexistant, marquer et passer au suivant
+            if (msg.includes("404") || msg.includes("not found")) {
+                console.log(`❌ ${modelName} non trouvé, rotation...`);
+                exhaustedModels.add(modelName);
+                currentModelIndex = (currentModelIndex + 1) % MODELS_FALLBACK.length;
+                continue;
+            }
+
+            // 429 / quota → marquer et passer au suivant
+            if (msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests") || msg.includes("RESOURCE_EXHAUSTED")) {
+                console.log(`⚠️ Quota atteint sur ${modelName}`);
+                exhaustedModels.add(modelName);
+                currentModelIndex = (currentModelIndex + 1) % MODELS_FALLBACK.length;
+
+                // Si pas tous épuisés, essayer le suivant immédiatement
+                if (exhaustedModels.size < MODELS_FALLBACK.length) {
+                    console.log(`🔄 Rotation vers ${MODELS_FALLBACK[currentModelIndex]}...`);
+                }
+                continue;
+            }
+
+            // Autre erreur → propager directement
+            throw err;
+        }
+    }
+    throw new Error("Aucun modèle Gemini disponible après plusieurs tentatives");
+}
+
+console.log("🔥 gemini.service.js avec fallback + retry automatique chargé");
+
 // ========================================
 // UTILITAIRES
 // ========================================
 
-/**
- * Télécharge un fichier Cloudinary en base64
- * 1. Vérifie d'abord le cache mémoire global (bufferCache)
- * 2. Sinon, génère une URL signée Cloudinary pour téléchargement
- */
 async function urlToBase64(url, publicId) {
-    // 1. Vérifier le cache mémoire en priorité
     if (publicId && global.bufferCache && global.bufferCache.has(publicId)) {
         const cached = global.bufferCache.get(publicId);
         if (cached.expiresAt > Date.now()) {
@@ -42,53 +103,96 @@ async function urlToBase64(url, publicId) {
     }
     console.log(`❌ Cache MISS pour ${publicId} — tentative HTTP...`);
 
-    return new Promise((resolve, reject) => {
-        // Fallback: extraction du publicId si non fourni (backwards compatibility)
+    const https = require("https");
+    const http = require("http");
+
+    // Helper: download a URL and return { base64, mimeType }
+    function downloadUrl(targetUrl) {
+        return new Promise((resolve, reject) => {
+            const client = targetUrl.startsWith("https") ? https : http;
+            client.get(targetUrl, (res) => {
+                // Follow redirects (301, 302, 307, 308)
+                if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+                    return downloadUrl(res.headers.location).then(resolve).catch(reject);
+                }
+                const chunks = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("end", () => {
+                    if (res.statusCode === 200) {
+                        const buffer = Buffer.concat(chunks);
+                        const base64 = buffer.toString("base64");
+                        const mimeType = res.headers["content-type"] || "application/octet-stream";
+                        resolve({ base64, mimeType });
+                    } else {
+                        reject(new Error(`Status: ${res.statusCode} for ${targetUrl}`));
+                    }
+                });
+                res.on("error", reject);
+            }).on("error", reject);
+        });
+    }
+
+    // Stratégie 1 : Essayer l'URL originale directement
+    try {
+        console.log("📥 Tentative 1 : URL originale directe...");
+        const result = await downloadUrl(url);
+        console.log(`✅ Téléchargement OK via URL originale: ${result.mimeType}`);
+        return result;
+    } catch (err1) {
+        console.log(`⚠️ URL originale échouée (${err1.message}), tentative suivante...`);
+    }
+
+    // Stratégie 2 : URL non signée (sans signature)
+    try {
         const finalPublicId = publicId || url
             .split("/upload/")[1]
-            ?.replace(/^v\d+\//, "");
+            ?.replace(/^v\d+\//, "")
+            ?.replace(/^s--[^/]+--\//, "");
 
-        if (!finalPublicId) return reject(new Error("PublicId non trouvé dans l'URL"));
+        if (finalPublicId) {
+            const isPdf = url.includes(".pdf") || url.includes("/raw/");
+            const resourceType = isPdf ? "raw" : "video";
 
-        // Détermine resource_type (raw pour pdf, video pour audio)
-        const isPdf = url.includes(".pdf") || url.includes("/raw/");
-        const resourceType = isPdf ? "raw" : "video";
-
-        const signedUrl = cloudinary.url(finalPublicId, {
-            resource_type: resourceType,
-            type: "upload",
-            sign_url: true,
-            secure: true,
-            expires_at: Math.floor(Date.now() / 1000) + 3600,
-        });
-
-        console.log("🔑 URL signée générée:", signedUrl);
-
-        const https = require("https");
-        const http = require("http");
-        const client = signedUrl.startsWith("https") ? https : http;
-
-        client.get(signedUrl, (res) => {
-            const chunks = [];
-            res.on("data", (chunk) => chunks.push(chunk));
-            res.on("end", () => {
-                if (res.statusCode === 200) {
-                    const buffer = Buffer.concat(chunks);
-                    const base64 = buffer.toString("base64");
-                    const mimeType = res.headers["content-type"] || "application/octet-stream";
-                    console.log(`✅ Téléchargement OK via URL signée: ${mimeType}`);
-                    resolve({ base64, mimeType });
-                } else {
-                    reject(new Error(`Status: ${res.statusCode} for ${signedUrl}`));
-                }
+            const unsignedUrl = cloudinary.url(finalPublicId, {
+                resource_type: resourceType,
+                type: "upload",
+                secure: true,
             });
-            res.on("error", reject);
-        }).on("error", reject);
+
+            console.log("📥 Tentative 2 : URL non signée:", unsignedUrl);
+            const result = await downloadUrl(unsignedUrl);
+            console.log(`✅ Téléchargement OK via URL non signée: ${result.mimeType}`);
+            return result;
+        }
+    } catch (err2) {
+        console.log(`⚠️ URL non signée échouée (${err2.message}), tentative suivante...`);
+    }
+
+    // Stratégie 3 : URL signée (dernier recours)
+    const finalPublicId = publicId || url
+        .split("/upload/")[1]
+        ?.replace(/^v\d+\//, "")
+        ?.replace(/^s--[^/]+--\//, "");
+
+    if (!finalPublicId) throw new Error("PublicId non trouvé dans l'URL");
+
+    const isPdf = url.includes(".pdf") || url.includes("/raw/");
+    const resourceType = isPdf ? "raw" : "video";
+
+    const signedUrl = cloudinary.url(finalPublicId, {
+        resource_type: resourceType,
+        type: "upload",
+        sign_url: true,
+        secure: true,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
     });
+
+    console.log("📥 Tentative 3 : URL signée:", signedUrl);
+    const result = await downloadUrl(signedUrl);
+    console.log(`✅ Téléchargement OK via URL signée: ${result.mimeType}`);
+    return result;
 }
-/**
- * Parse JSON en nettoyant les backticks markdown de Gemini
- */
+
 function safeParseJSON(text) {
     try {
         let cleaned = text.trim();
@@ -104,7 +208,7 @@ function safeParseJSON(text) {
 }
 
 // ========================================
-// FONCTION 1 : ANALYSE PDF (Gemini Vision)
+// FONCTION 1 : ANALYSE PDF
 // ========================================
 
 async function analyzePDF(pdfUrl, publicId) {
@@ -112,15 +216,16 @@ async function analyzePDF(pdfUrl, publicId) {
         console.log("📄 Téléchargement PDF...");
         const { base64 } = await urlToBase64(pdfUrl, publicId);
 
-        const result = await model.generateContent([
-            {
-                inlineData: {
-                    data: base64,
-                    mimeType: "application/pdf", // toujours PDF
+        const result = await callWithRetry((model) =>
+            model.generateContent([
+                {
+                    inlineData: {
+                        data: base64,
+                        mimeType: "application/pdf",
+                    },
                 },
-            },
-            {
-                text: `Analyse ce document PDF de cours en détail. Retourne un JSON avec exactement cette structure :
+                {
+                    text: `Analyse ce document PDF de cours en détail. Retourne un JSON avec exactement cette structure :
 {
   "extractedText": "Le texte complet extrait du document",
   "themes": ["thème1", "thème2"],
@@ -128,11 +233,10 @@ async function analyzePDF(pdfUrl, publicId) {
   "summary": "Un résumé concis du document",
   "estimatedDifficulty": "easy|medium|hard"
 }
-
-Sois très précis dans l'extraction du texte. Identifie tous les thèmes et concepts importants.
 Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
-            },
-        ]);
+                },
+            ])
+        );
 
         const response = result.response;
         const text = response.text();
@@ -156,7 +260,7 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
 }
 
 // ========================================
-// FONCTION 2 : TRANSCRIPTION AUDIO (Gemini)
+// FONCTION 2 : TRANSCRIPTION AUDIO
 // ========================================
 
 async function transcribeAudio(audioUrl, publicId) {
@@ -164,33 +268,23 @@ async function transcribeAudio(audioUrl, publicId) {
         console.log("🎤 Téléchargement audio...");
         const { base64, mimeType } = await urlToBase64(audioUrl, publicId);
 
-        // Déterminer le bon MIME type pour Gemini
-        let audioMime = "audio/mpeg"; // défaut
-        if (audioUrl.includes(".3gp") || mimeType.includes("3gp")) {
-            audioMime = "video/3gpp";
-        } else if (audioUrl.includes(".wav") || mimeType.includes("wav")) {
-            audioMime = "audio/wav";
-        } else if (audioUrl.includes(".ogg") || mimeType.includes("ogg")) {
-            audioMime = "audio/ogg";
-        } else if (audioUrl.includes(".webm") || mimeType.includes("webm")) {
-            audioMime = "audio/webm";
-        } else if (audioUrl.includes(".m4a") || mimeType.includes("m4a")) {
-            audioMime = "audio/mp4";
-        } else if (mimeType.includes("audio") || mimeType.includes("video")) {
-            audioMime = mimeType;
-        }
+        let audioMime = "audio/mpeg";
+        if (audioUrl.includes(".3gp") || mimeType.includes("3gp")) audioMime = "video/3gpp";
+        else if (audioUrl.includes(".wav") || mimeType.includes("wav")) audioMime = "audio/wav";
+        else if (audioUrl.includes(".ogg") || mimeType.includes("ogg")) audioMime = "audio/ogg";
+        else if (audioUrl.includes(".webm") || mimeType.includes("webm")) audioMime = "audio/webm";
+        else if (audioUrl.includes(".m4a") || mimeType.includes("m4a")) audioMime = "audio/mp4";
+        else if (mimeType.includes("audio") || mimeType.includes("video")) audioMime = mimeType;
 
         console.log(`🎵 Format audio: ${audioMime}`);
 
-        const result = await model.generateContent([
-            {
-                inlineData: {
-                    data: base64,
-                    mimeType: audioMime,
+        const result = await callWithRetry((model) =>
+            model.generateContent([
+                {
+                    inlineData: { data: base64, mimeType: audioMime },
                 },
-            },
-            {
-                text: `Transcris fidèlement cet enregistrement audio. C'est un étudiant qui récite ce qu'il a mémorisé d'un cours.
+                {
+                    text: `Transcris fidèlement cet enregistrement audio. C'est un étudiant qui récite ce qu'il a mémorisé d'un cours.
 Retourne un JSON avec exactement cette structure :
 {
   "transcription": "Le texte transcrit fidèlement",
@@ -198,11 +292,11 @@ Retourne un JSON avec exactement cette structure :
   "confidence": 0.95,
   "isEmpty": false
 }
-
 Si l'audio est vide ou inaudible, mets isEmpty à true et transcription à "".
 Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
-            },
-        ]);
+                },
+            ])
+        );
 
         const response = result.response;
         const text = response.text();
@@ -225,12 +319,11 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
 }
 
 // ========================================
-// FONCTION 3 : DÉTECTION LACUNES (Gemini Text)
+// FONCTION 3 : DÉTECTION LACUNES
 // ========================================
 
 async function detectLacunes(extractedText, transcription, themes) {
     try {
-        // Transcription vide → tout est lacune
         if (!transcription || transcription.trim().length < 10) {
             return {
                 lacunes: themes.map((t) => ({
@@ -245,11 +338,12 @@ async function detectLacunes(extractedText, transcription, themes) {
             };
         }
 
-        const result = await model.generateContent({
-            contents: [{
-                role: "user",
-                parts: [{
-                    text: `Tu es un expert pédagogique. Compare le contenu d'un cours avec la récitation d'un étudiant.
+        const result = await callWithRetry((model) =>
+            model.generateContent({
+                contents: [{
+                    role: "user",
+                    parts: [{
+                        text: `Tu es un expert pédagogique. Compare le contenu d'un cours avec la récitation d'un étudiant.
 
 CONTENU DU COURS :
 ${extractedText.substring(0, 3000)}
@@ -269,12 +363,12 @@ Retourne un JSON :
   "globalUnderstanding": 65,
   "feedback": "Feedback encourageant"
 }
-
 globalUnderstanding = score de 0 à 100.
 Retourne UNIQUEMENT le JSON.`,
+                    }],
                 }],
-            }],
-        });
+            })
+        );
 
         const response = result.response;
         const parsed = safeParseJSON(response.text());
@@ -296,7 +390,7 @@ Retourne UNIQUEMENT le JSON.`,
 }
 
 // ========================================
-// FONCTION 4 : GÉNÉRATION QUESTIONS (Gemini Text)
+// FONCTION 4 : GÉNÉRATION QUESTIONS
 // ========================================
 
 async function generateQuestions(lacunes, extractedText, questionCount = 5) {
@@ -305,11 +399,12 @@ async function generateQuestions(lacunes, extractedText, questionCount = 5) {
             .map((l) => `- ${l.topic} (${l.severity}): ${l.description}`)
             .join("\n");
 
-        const result = await model.generateContent({
-            contents: [{
-                role: "user",
-                parts: [{
-                    text: `Tu es un professeur expert. Génère ${questionCount} questions ciblées sur les lacunes.
+        const result = await callWithRetry((model) =>
+            model.generateContent({
+                contents: [{
+                    role: "user",
+                    parts: [{
+                        text: `Tu es un professeur expert. Génère ${questionCount} questions ciblées sur les lacunes.
 
 LACUNES :
 ${lacunesText}
@@ -332,12 +427,12 @@ Retourne un JSON :
     }
   ]
 }
-
 open → options = [] | true_false → ["Vrai","Faux"] | mcq → 4 options.
 Retourne UNIQUEMENT le JSON.`,
+                    }],
                 }],
-            }],
-        });
+            })
+        );
 
         const response = result.response;
         const parsed = safeParseJSON(response.text());
@@ -359,16 +454,17 @@ Retourne UNIQUEMENT le JSON.`,
 }
 
 // ========================================
-// FONCTION 5 : ÉVALUATION RÉPONSE (Gemini Text)
+// FONCTION 5 : ÉVALUATION RÉPONSE
 // ========================================
 
 async function evaluateAnswer(questionText, correctAnswer, studentAnswer) {
     try {
-        const result = await model.generateContent({
-            contents: [{
-                role: "user",
-                parts: [{
-                    text: `Tu es un correcteur bienveillant. Évalue la réponse d'un étudiant.
+        const result = await callWithRetry((model) =>
+            model.generateContent({
+                contents: [{
+                    role: "user",
+                    parts: [{
+                        text: `Tu es un correcteur bienveillant. Évalue la réponse d'un étudiant.
 
 QUESTION : ${questionText}
 RÉPONSE ATTENDUE : ${correctAnswer}
@@ -381,11 +477,11 @@ Retourne un JSON :
   "feedback": "Feedback encourageant",
   "hint": "Indice si incorrect, sinon null"
 }
-
 isCorrect = true si score >= 60. Retourne UNIQUEMENT le JSON.`,
+                    }],
                 }],
-            }],
-        });
+            })
+        );
 
         const response = result.response;
         const parsed = safeParseJSON(response.text());
@@ -413,7 +509,6 @@ async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId
     let totalTokensUsed = 0;
 
     try {
-        // ÉTAPE 1 — Analyse PDF
         console.log("📄 Étape 1/4 : Analyse du PDF...");
         const pdfAnalysis = await analyzePDF(pdfUrl, pdfPublicId);
         totalTokensUsed += pdfAnalysis.tokensUsed;
@@ -426,7 +521,6 @@ async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId
             tokensUsed: pdfAnalysis.tokensUsed,
         });
 
-        // ÉTAPE 2 — Transcription audio
         console.log("🎤 Étape 2/4 : Transcription audio...");
         const audioTranscription = await transcribeAudio(audioUrl, audioPublicId);
         totalTokensUsed += audioTranscription.tokensUsed;
@@ -438,7 +532,6 @@ async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId
             tokensUsed: audioTranscription.tokensUsed,
         });
 
-        // ÉTAPE 3 — Détection lacunes
         console.log("🔍 Étape 3/4 : Détection des lacunes...");
         const lacunesResult = await detectLacunes(
             pdfAnalysis.extractedText,
@@ -454,7 +547,6 @@ async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId
             tokensUsed: lacunesResult.tokensUsed,
         });
 
-        // ÉTAPE 4 — Génération questions
         console.log("❓ Étape 4/4 : Génération des questions...");
         const questionsResult = await generateQuestions(
             lacunesResult.lacunes,
@@ -482,10 +574,6 @@ async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId
         throw error;
     }
 }
-
-// ========================================
-// EXPORTS
-// ========================================
 
 module.exports = {
     analyzePDF,
