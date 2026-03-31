@@ -31,21 +31,18 @@ function getModel() {
     return genAI.getGenerativeModel({ model: modelName });
 }
 
-// Wrapper intelligent : retry sur 429, rotation sur quota/404
 async function callWithRetry(callFn, maxRetries = 12) {
     const exhaustedModels = new Set();
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         const modelName = MODELS_FALLBACK[currentModelIndex];
 
-        // Si tous les modèles sont épuisés, attendre puis réinitialiser
         if (exhaustedModels.size >= MODELS_FALLBACK.length) {
             console.log(`⏳ Tous les modèles épuisés, attente de 40s...`);
             await new Promise((r) => setTimeout(r, 40000));
             exhaustedModels.clear();
         }
 
-        // Sauter les modèles déjà épuisés
         if (exhaustedModels.has(modelName)) {
             currentModelIndex = (currentModelIndex + 1) % MODELS_FALLBACK.length;
             continue;
@@ -57,7 +54,6 @@ async function callWithRetry(callFn, maxRetries = 12) {
         } catch (err) {
             const msg = err.message || "";
 
-            // 404 / not found → modèle inexistant, marquer et passer au suivant
             if (msg.includes("404") || msg.includes("not found")) {
                 console.log(`❌ ${modelName} non trouvé, rotation...`);
                 exhaustedModels.add(modelName);
@@ -65,27 +61,23 @@ async function callWithRetry(callFn, maxRetries = 12) {
                 continue;
             }
 
-            // 429 / quota → marquer et passer au suivant
             if (msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests") || msg.includes("RESOURCE_EXHAUSTED")) {
                 console.log(`⚠️ Quota atteint sur ${modelName}`);
                 exhaustedModels.add(modelName);
                 currentModelIndex = (currentModelIndex + 1) % MODELS_FALLBACK.length;
-
-                // Si pas tous épuisés, essayer le suivant immédiatement
                 if (exhaustedModels.size < MODELS_FALLBACK.length) {
                     console.log(`🔄 Rotation vers ${MODELS_FALLBACK[currentModelIndex]}...`);
                 }
                 continue;
             }
 
-            // Autre erreur → propager directement
             throw err;
         }
     }
     throw new Error("Aucun modèle Gemini disponible après plusieurs tentatives");
 }
 
-console.log("🔥 gemini.service.js avec fallback + retry automatique chargé");
+console.log("🔥 gemini.service.js avec fallback + retry + langue dynamique chargé");
 
 // ========================================
 // UTILITAIRES
@@ -106,12 +98,10 @@ async function urlToBase64(url, publicId) {
     const https = require("https");
     const http = require("http");
 
-    // Helper: download a URL and return { base64, mimeType }
     function downloadUrl(targetUrl) {
         return new Promise((resolve, reject) => {
             const client = targetUrl.startsWith("https") ? https : http;
             client.get(targetUrl, (res) => {
-                // Follow redirects (301, 302, 307, 308)
                 if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
                     return downloadUrl(res.headers.location).then(resolve).catch(reject);
                 }
@@ -132,7 +122,6 @@ async function urlToBase64(url, publicId) {
         });
     }
 
-    // Stratégie 1 : Essayer l'URL originale directement
     try {
         console.log("📥 Tentative 1 : URL originale directe...");
         const result = await downloadUrl(url);
@@ -142,7 +131,6 @@ async function urlToBase64(url, publicId) {
         console.log(`⚠️ URL originale échouée (${err1.message}), tentative suivante...`);
     }
 
-    // Stratégie 2 : URL non signée (sans signature)
     try {
         const finalPublicId = publicId || url
             .split("/upload/")[1]
@@ -168,7 +156,6 @@ async function urlToBase64(url, publicId) {
         console.log(`⚠️ URL non signée échouée (${err2.message}), tentative suivante...`);
     }
 
-    // Stratégie 3 : URL signée (dernier recours)
     const finalPublicId = publicId || url
         .split("/upload/")[1]
         ?.replace(/^v\d+\//, "")
@@ -209,6 +196,7 @@ function safeParseJSON(text) {
 
 // ========================================
 // FONCTION 1 : ANALYSE PDF
+// ✅ MODIFIÉ : détecte la langue du document
 // ========================================
 
 async function analyzePDF(pdfUrl, publicId) {
@@ -225,15 +213,16 @@ async function analyzePDF(pdfUrl, publicId) {
                     },
                 },
                 {
-                    text: `Analyse ce document PDF de cours en détail. Retourne un JSON avec exactement cette structure :
+                    // ✅ Ajout du champ "language" pour détecter la langue du PDF
+                    text: `Analyse ce document PDF. JSON only:
 {
-  "extractedText": "Le texte complet extrait du document",
+  "extractedText": "texte complet extrait",
   "themes": ["thème1", "thème2"],
-  "keyPoints": ["point clé 1", "point clé 2"],
-  "summary": "Un résumé concis du document",
-  "estimatedDifficulty": "easy|medium|hard"
-}
-Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
+  "keyPoints": ["point1", "point2"],
+  "summary": "résumé court",
+  "estimatedDifficulty": "easy|medium|hard",
+  "language": "fr|ar|en|es|de"
+}`,
                 },
             ])
         );
@@ -243,7 +232,9 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
         const parsed = safeParseJSON(text);
         const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
 
-        console.log(`✅ PDF analysé — ${tokensUsed} tokens`);
+        // ✅ language est maintenant retourné
+        const language = parsed.language || "fr";
+        console.log(`✅ PDF analysé — langue: ${language} — ${tokensUsed} tokens`);
 
         return {
             extractedText: parsed.extractedText || "",
@@ -251,6 +242,7 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
             keyPoints: parsed.keyPoints || [],
             summary: parsed.summary || "",
             estimatedDifficulty: parsed.estimatedDifficulty || "medium",
+            language,
             tokensUsed,
         };
     } catch (error) {
@@ -261,9 +253,10 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
 
 // ========================================
 // FONCTION 2 : TRANSCRIPTION AUDIO
+// ✅ MODIFIÉ : prompt adapté à la langue du PDF
 // ========================================
 
-async function transcribeAudio(audioUrl, publicId) {
+async function transcribeAudio(audioUrl, publicId, lang = "fr") {
     try {
         console.log("🎤 Téléchargement audio...");
         const { base64, mimeType } = await urlToBase64(audioUrl, publicId);
@@ -284,16 +277,15 @@ async function transcribeAudio(audioUrl, publicId) {
                     inlineData: { data: base64, mimeType: audioMime },
                 },
                 {
-                    text: `Transcris fidèlement cet enregistrement audio. C'est un étudiant qui récite ce qu'il a mémorisé d'un cours.
-Retourne un JSON avec exactement cette structure :
+                    text: `Transcris fidèlement cet audio.
+Retourne UNIQUEMENT ce JSON (sans markdown) :
 {
-  "transcription": "Le texte transcrit fidèlement",
-  "language": "fr|ar|en",
+  "transcription": "le texte transcrit",
+  "language": "ar|fr|en",
   "confidence": 0.95,
-  "isEmpty": false
-}
-Si l'audio est vide ou inaudible, mets isEmpty à true et transcription à "".
-Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
+  "isEmpty": false,
+  "detectedContent": "courte description de ce que tu as entendu"
+}`,
                 },
             ])
         );
@@ -307,7 +299,7 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
 
         return {
             transcription: parsed.transcription || "",
-            language: parsed.language || "fr",
+            language: parsed.language || lang,
             confidence: parsed.confidence || 0,
             isEmpty: parsed.isEmpty || false,
             tokensUsed,
@@ -320,9 +312,10 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel.`,
 
 // ========================================
 // FONCTION 3 : DÉTECTION LACUNES
+// ✅ MODIFIÉ : répond dans la langue du PDF
 // ========================================
 
-async function detectLacunes(extractedText, transcription, themes) {
+async function detectLacunes(extractedText, transcription, themes, lang = "fr") {
     try {
         if (!transcription || transcription.trim().length < 10) {
             return {
@@ -343,28 +336,13 @@ async function detectLacunes(extractedText, transcription, themes) {
                 contents: [{
                     role: "user",
                     parts: [{
-                        text: `Tu es un expert pédagogique. Compare le contenu d'un cours avec la récitation d'un étudiant.
-
-CONTENU DU COURS :
-${extractedText.substring(0, 3000)}
-
-THÈMES DU COURS :
-${themes.join(", ")}
-
-RÉCITATION DE L'ÉTUDIANT :
-${transcription}
-
-Retourne un JSON :
-{
-  "lacunes": [
-    { "topic": "nom du thème", "description": "ce qui manque", "severity": "low|medium|high" }
-  ],
-  "masteredTopics": ["thème bien maîtrisé"],
-  "globalUnderstanding": 65,
-  "feedback": "Feedback encourageant"
-}
-globalUnderstanding = score de 0 à 100.
-Retourne UNIQUEMENT le JSON.`,
+                        // ✅ Prompt raccourci, langue transmise dynamiquement
+                        text: `Expert pedagogue. Compare course vs student recitation. Answer in ${lang}. JSON only:
+COURSE: ${extractedText.substring(0, 2000)}
+THEMES: ${themes.join(", ")}
+RECITATION: ${transcription}
+{"lacunes":[{"topic":"","description":"","severity":"low|medium|high"}],"masteredTopics":[],"globalUnderstanding":0,"feedback":""}
+globalUnderstanding = 0-100.`,
                     }],
                 }],
             })
@@ -391,9 +369,10 @@ Retourne UNIQUEMENT le JSON.`,
 
 // ========================================
 // FONCTION 4 : GÉNÉRATION QUESTIONS
+// ✅ MODIFIÉ : questions générées dans la langue du PDF
 // ========================================
 
-async function generateQuestions(lacunes, extractedText, questionCount = 5) {
+async function generateQuestions(lacunes, extractedText, questionCount = 5, lang = "fr") {
     try {
         const lacunesText = lacunes
             .map((l) => `- ${l.topic} (${l.severity}): ${l.description}`)
@@ -404,31 +383,12 @@ async function generateQuestions(lacunes, extractedText, questionCount = 5) {
                 contents: [{
                     role: "user",
                     parts: [{
-                        text: `Tu es un professeur expert. Génère ${questionCount} questions ciblées sur les lacunes.
-
-LACUNES :
-${lacunesText}
-
-COURS (contexte) :
-${extractedText.substring(0, 2000)}
-
-Retourne un JSON :
-{
-  "questions": [
-    {
-      "questionText": "La question",
-      "type": "open|mcq|true_false",
-      "options": ["A", "B", "C", "D"],
-      "correctAnswer": "La bonne réponse",
-      "topic": "Thème ciblé",
-      "difficulty": "easy|medium|hard",
-      "isLacune": true,
-      "explanation": "Explication"
-    }
-  ]
-}
-open → options = [] | true_false → ["Vrai","Faux"] | mcq → 4 options.
-Retourne UNIQUEMENT le JSON.`,
+                        // ✅ Prompt raccourci, langue transmise dynamiquement
+                        text: `Expert teacher. Generate ${questionCount} questions targeting gaps. Language: ${lang}. JSON only:
+GAPS: ${lacunesText}
+COURSE: ${extractedText.substring(0, 1500)}
+{"questions":[{"questionText":"","type":"open|mcq|true_false","options":[],"correctAnswer":"","topic":"","difficulty":"easy|medium|hard","isLacune":true,"explanation":""}]}
+open→options=[] | true_false→["Vrai","Faux"] | mcq→4 options.`,
                     }],
                 }],
             })
@@ -455,29 +415,23 @@ Retourne UNIQUEMENT le JSON.`,
 
 // ========================================
 // FONCTION 5 : ÉVALUATION RÉPONSE
+// ✅ MODIFIÉ : feedback dans la langue du PDF
 // ========================================
 
-async function evaluateAnswer(questionText, correctAnswer, studentAnswer) {
+async function evaluateAnswer(questionText, correctAnswer, studentAnswer, lang = "fr") {
     try {
         const result = await callWithRetry((model) =>
             model.generateContent({
                 contents: [{
                     role: "user",
                     parts: [{
-                        text: `Tu es un correcteur bienveillant. Évalue la réponse d'un étudiant.
-
-QUESTION : ${questionText}
-RÉPONSE ATTENDUE : ${correctAnswer}
-RÉPONSE ÉTUDIANT : ${studentAnswer}
-
-Retourne un JSON :
-{
-  "isCorrect": true,
-  "score": 75,
-  "feedback": "Feedback encourageant",
-  "hint": "Indice si incorrect, sinon null"
-}
-isCorrect = true si score >= 60. Retourne UNIQUEMENT le JSON.`,
+                        // ✅ Prompt raccourci, langue transmise dynamiquement
+                        text: `Evaluate student answer. Answer in ${lang}. JSON only:
+Q: ${questionText}
+EXPECTED: ${correctAnswer}
+STUDENT: ${studentAnswer}
+{"isCorrect":true,"score":75,"feedback":"...","hint":null}
+isCorrect=true if score>=60. hint=null if correct.`,
                     }],
                 }],
             })
@@ -503,6 +457,7 @@ isCorrect = true si score >= 60. Retourne UNIQUEMENT le JSON.`,
 
 // ========================================
 // FONCTION 6 : ORCHESTRATION COMPLÈTE
+// ✅ MODIFIÉ : lang propagée à toutes les étapes
 // ========================================
 
 async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId, onStepComplete) {
@@ -512,17 +467,24 @@ async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId
         console.log("📄 Étape 1/4 : Analyse du PDF...");
         const pdfAnalysis = await analyzePDF(pdfUrl, pdfPublicId);
         totalTokensUsed += pdfAnalysis.tokensUsed;
+
+        // ✅ On récupère la langue ici et on la propage à toutes les étapes suivantes
+        const lang = pdfAnalysis.language || "fr";
+        console.log(`🌍 Langue détectée: ${lang}`);
+
         await onStepComplete("pdf_analyzed", {
             extractedText: pdfAnalysis.extractedText,
             themes: pdfAnalysis.themes,
             keyPoints: pdfAnalysis.keyPoints,
             summary: pdfAnalysis.summary,
             estimatedDifficulty: pdfAnalysis.estimatedDifficulty,
+            language: lang,
             tokensUsed: pdfAnalysis.tokensUsed,
         });
 
         console.log("🎤 Étape 2/4 : Transcription audio...");
-        const audioTranscription = await transcribeAudio(audioUrl, audioPublicId);
+        // ✅ lang passée ici
+        const audioTranscription = await transcribeAudio(audioUrl, audioPublicId, lang);
         totalTokensUsed += audioTranscription.tokensUsed;
         await onStepComplete("audio_transcribed", {
             transcription: audioTranscription.transcription,
@@ -532,11 +494,16 @@ async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId
             tokensUsed: audioTranscription.tokensUsed,
         });
 
+        // Utiliser la langue de l'audio si détectée, sinon la langue du PDF
+        const finalLang = audioTranscription.language || lang;
+
         console.log("🔍 Étape 3/4 : Détection des lacunes...");
+        // ✅ lang passée ici (langue de l'audio)
         const lacunesResult = await detectLacunes(
             pdfAnalysis.extractedText,
             audioTranscription.transcription,
-            pdfAnalysis.themes
+            pdfAnalysis.themes,
+            finalLang
         );
         totalTokensUsed += lacunesResult.tokensUsed;
         await onStepComplete("lacunes_detected", {
@@ -548,10 +515,12 @@ async function processMemorySession(pdfUrl, pdfPublicId, audioUrl, audioPublicId
         });
 
         console.log("❓ Étape 4/4 : Génération des questions...");
+        // ✅ lang passée ici (langue de l'audio)
         const questionsResult = await generateQuestions(
             lacunesResult.lacunes,
             pdfAnalysis.extractedText,
-            5
+            5,
+            finalLang
         );
         totalTokensUsed += questionsResult.tokensUsed;
         await onStepComplete("questions_generated", {
