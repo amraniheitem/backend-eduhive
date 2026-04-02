@@ -24,8 +24,6 @@ const teacherSchema = new mongoose.Schema(
         enum: ["PRIMAIRE", "CEM", "LYCEE", "SUPERIEUR"],
       },
     ],
-
-    // POINTS DU PROFESSEUR
     credit: {
       type: Number,
       default: 0,

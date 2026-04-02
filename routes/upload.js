@@ -18,13 +18,6 @@ const Teacher = require("../models/Teacher");
 
 const memoryStorage = multer({ storage: multer.memoryStorage() });
 
-// ========================================
-// UPLOAD VIDÉO (+ miniature optionnelle)
-// FormData fields:
-//   - video     : fichier vidéo (obligatoire)
-//   - thumbnail : image miniature (optionnel)
-//   - subjectId, title, description, order, price
-// ========================================
 router.post(
   "/video",
   requireAuthExpress,
@@ -147,9 +140,6 @@ router.post(
   }
 );
 
-// ========================================
-// UPLOAD PDF
-// ========================================
 router.post(
   "/pdf",
   requireAuthExpress,

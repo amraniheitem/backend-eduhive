@@ -16,25 +16,11 @@ const subjectSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
-    price: {
-      type: Number,
-      required: true,
-      default: 50,
-      min: 0,
-    },
-    category: {
-      type: String,
-      trim: true,
-    },
+
     level: {
       type: String,
-      enum: ["PRIMAIRE", "COLLEGE", "LYCEE", "SUPERIEUR"],
+      enum: ["PRIMAIRE", "CEM", "LYCEE", "SUPERIEUR"],
       default: "LYCEE",
-    },
-    year: {
-      type: String,
-      trim: true
-      // Ex: "1", "2", "3", etc. pour correspondre au currentYear de l'étudiant
     },
     status: {
       type: String,

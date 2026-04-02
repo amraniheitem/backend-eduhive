@@ -20,11 +20,6 @@ const studentSchema = new mongoose.Schema({
     enum: ['PRIMAIRE', 'CEM', 'LYCEE', 'SUPERIEUR'],
     required: true
   },
-  currentYear: {
-    type: String,
-    trim: true
-    // Exemples: "LYCEE_1", "LYCEE_2", "LYCEE_3", "CEM_4", etc.
-  },
 
   // POINTS DE L'ÉTUDIANT
   credit: {

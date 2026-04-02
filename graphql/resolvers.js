@@ -164,15 +164,8 @@ const resolvers = {
         const student = await Student.findOne({ userId: context.user._id });
         if (student) {
           let targetLevel = student.educationLevel;
-          if (targetLevel === "CEM") targetLevel = "COLLEGE";
+          if (targetLevel === "CEM") targetLevel = "CEM";
           filter.level = targetLevel;
-
-          if (student.currentYear) {
-            const yearMatch = student.currentYear.match(/\d+/);
-            if (yearMatch) {
-              filter.year = yearMatch[0];
-            }
-          }
         }
       }
 
@@ -198,8 +191,7 @@ const resolvers = {
             hasEnrolled: false,
             enrolledSubjects: [],
             availableSubjects: [],
-            studentLevel: null,
-            studentYear: null
+            studentLevel: null
           };
         }
 
@@ -212,8 +204,7 @@ const resolvers = {
           hasEnrolled: subjects.length > 0,
           enrolledSubjects: subjects,
           availableSubjects: [],
-          studentLevel: null,
-          studentYear: null
+          studentLevel: null
         };
       }
 
@@ -222,7 +213,7 @@ const resolvers = {
       // ========================================
       const levelMap = {
         'PRIMAIRE': 'PRIMAIRE',
-        'CEM': 'COLLEGE',
+        'CEM': 'CEM',
         'LYCEE': 'LYCEE',
         'SUPERIEUR': 'SUPERIEUR'
       };
@@ -233,8 +224,7 @@ const resolvers = {
           hasEnrolled: false,
           enrolledSubjects: [],
           availableSubjects: [],
-          studentLevel: null,
-          studentYear: null
+          studentLevel: null
         };
       }
 
@@ -246,27 +236,13 @@ const resolvers = {
           hasEnrolled: true,
           enrolledSubjects: enrolled,
           availableSubjects: [],
-          studentLevel: student.educationLevel,
-          studentYear: student.currentYear
+          studentLevel: student.educationLevel
         };
       }
 
       const mappedLevel = levelMap[student.educationLevel];
-      const filter = { level: mappedLevel, status: 'ACTIVE' };
 
-      if (student.educationLevel !== 'SUPERIEUR') {
-        if (student.currentYear && student.currentYear !== '') {
-          filter.year = student.currentYear;
-        } else {
-          return {
-            hasEnrolled: false,
-            enrolledSubjects: [],
-            availableSubjects: [],
-            studentLevel: student.educationLevel,
-            studentYear: student.currentYear
-          };
-        }
-      }
+      const filter = { level: mappedLevel, status: 'ACTIVE' };
 
       const available = await Subject.find(filter).sort({ createdAt: -1 });
 
@@ -274,8 +250,7 @@ const resolvers = {
         hasEnrolled: false,
         enrolledSubjects: [],
         availableSubjects: available,
-        studentLevel: student.educationLevel,
-        studentYear: student.currentYear
+        studentLevel: student.educationLevel
       };
     },
     myPurchasedSubjects: async (_, __, context) => {
@@ -575,7 +550,7 @@ const resolvers = {
     // ========================================
     registerStudentStep1: async (_, args) => {
       try {
-        const { firstName, lastName, phone, parentName, educationLevel, currentYear } = args;
+        const { firstName, lastName, phone, parentName, educationLevel } = args;
 
         // Créer un User partiel (1/3)
         const user = await User.create({
@@ -593,7 +568,6 @@ const resolvers = {
           userId: user._id,
           parentName,
           educationLevel,
-          currentYear: currentYear || '',
           credit: 100,
           enrolledSubjects: []
         });
@@ -1048,7 +1022,7 @@ const resolvers = {
     createSubject: async (_, args, context) => {
       requireRole(context, ["ADMIN", "SUPER_ADMIN"]);
 
-      const { name, description, price, category, level, year } = args;
+      const { name, description, level } = args;
 
       const existingSubject = await Subject.findOne({ name });
       if (existingSubject) {
@@ -1058,10 +1032,7 @@ const resolvers = {
       const subject = await Subject.create({
         name,
         description,
-        price,
-        category,
         level,
-        year,
         assignedTeachers: [],
         enrolledStudents: [],
         stats: {

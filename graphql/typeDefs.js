@@ -24,7 +24,6 @@ const typeDefs = gql`
     user: User        
     parentName: String
     educationLevel: EducationLevel
-    currentYear: String
     credit: Float!
     enrolledSubjects: [Subject]
     createdAt: Date!
@@ -58,7 +57,6 @@ const typeDefs = gql`
   type StudentProfile {
     parentName: String
     educationLevel: EducationLevel
-    currentYear: String
     enrolledSubjects: [Subject]
   }
 
@@ -136,10 +134,7 @@ const typeDefs = gql`
     id: ID!
     name: String!
     description: String!
-    price: Float!
-    category: String
     level: Level!
-    year: String
     status: SubjectStatus!
     assignedTeachers: [AssignedTeacher]
     enrolledStudents: [EnrolledStudent]
@@ -316,7 +311,7 @@ const typeDefs = gql`
 
   enum Level {
     PRIMAIRE
-    COLLEGE
+    CEM
     LYCEE
     SUPERIEUR
   }
@@ -657,7 +652,6 @@ const typeDefs = gql`
     enrolledSubjects: [Subject]!
     availableSubjects: [Subject]!
     studentLevel: EducationLevel
-    studentYear: String
   }
 
   type Query {
@@ -718,7 +712,6 @@ const typeDefs = gql`
       phone: String!
       parentName: String!
       educationLevel: EducationLevel!
-      currentYear: String
     ): RegistrationStepResponse!
 
     registerTeacherStep1(
@@ -758,7 +751,6 @@ const typeDefs = gql`
       userId: ID!
       parentName: String!
       educationLevel: EducationLevel!
-      currentYear: String
     ): Student!
 
     createTeacherProfile(
@@ -788,19 +780,14 @@ const typeDefs = gql`
     createSubject(
       name: String!
       description: String!
-      price: Float!
-      category: String
       level: Level!
-      year: String
     ): Subject!
 
     updateSubject(
       id: ID!
       name: String
       description: String
-      price: Float
       level: Level
-      year: String
       status: SubjectStatus
     ): Subject!
 
@@ -814,7 +801,6 @@ const typeDefs = gql`
     deletePDF(subjectId: ID!, pdfId: ID!): Subject!
 
     updateStudentProfile(
-      currentYear: String
       educationLevel: EducationLevel
       parentName: String
     ): Student!
