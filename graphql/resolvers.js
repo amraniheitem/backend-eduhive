@@ -269,9 +269,6 @@ const resolvers = {
       return student?.enrolledSubjects || [];
     },
 
-    // ========================================
-    // PROGRESSION ÉTUDIANT
-    // ========================================
     myProgress: async (_, __, context) => {
       requireRole(context, ["STUDENT"]);
 
@@ -1156,15 +1153,17 @@ const resolvers = {
         throw new Error("Vous avez déjà acheté cette matière");
       }
 
-      if (!hasSufficientCredit(student.credit, subject.price)) {
+      const price = subject.price || 0;
+
+      if (!hasSufficientCredit(student.credit, price)) {
         throw new Error(
-          `Crédit insuffisant. Vous avez ${student.credit} points, il faut ${subject.price} points`,
+          `Crédit insuffisant. Vous avez ${student.credit} points, il faut ${price} points`,
         );
       }
 
-      const split = calculateSplit(subject.price);
+      const split = calculateSplit(price);
 
-      student.credit -= subject.price;
+      student.credit -= price;
       student.enrolledSubjects.push(subjectId);
       await student.save();
 

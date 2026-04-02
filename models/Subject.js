@@ -22,6 +22,10 @@ const subjectSchema = new mongoose.Schema(
       enum: ["PRIMAIRE", "CEM", "LYCEE", "SUPERIEUR"],
       default: "LYCEE",
     },
+    price: {
+      type: Number,
+      default: 0,
+    },
     status: {
       type: String,
       enum: ["ACTIVE", "INACTIVE", "DRAFT"],

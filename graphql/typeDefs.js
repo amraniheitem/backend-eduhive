@@ -135,6 +135,7 @@ const typeDefs = gql`
     name: String!
     description: String!
     level: Level!
+    price: Float
     status: SubjectStatus!
     assignedTeachers: [AssignedTeacher]
     enrolledStudents: [EnrolledStudent]
