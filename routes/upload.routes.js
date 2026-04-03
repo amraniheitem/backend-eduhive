@@ -97,12 +97,14 @@ router.post("/pdf", requireAuthExpress, uploadPDF.single("pdf"), async (req, res
 
         const result = await uploadToCloudinary(req.file.buffer, {
             folder: "memory_sessions/pdfs",
-            resource_type: "image",
+            resource_type: "raw",
             type: "upload",
-            access_mode: "public",  // ✅ fichier public accessible sans auth
-            format: "pdf",
+            access_mode: "public",
             public_id: `pdf_${Date.now()}_${req.user.id}`,
         });
+
+        // Construire manuellement l'URL publique raw
+        const publicUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/${result.public_id}`;
 
         // ✅ Sauvegarde temporaire en mémoire pour l'IA
         global.bufferCache = global.bufferCache || new Map();
@@ -112,12 +114,12 @@ router.post("/pdf", requireAuthExpress, uploadPDF.single("pdf"), async (req, res
             expiresAt: Date.now() + 3600000 // 1 heure
         });
 
-        console.log("✅ PDF uploadé:", result.secure_url);
+        console.log("✅ PDF uploadé:", publicUrl);
 
         return res.status(200).json({
             success: true,
             data: {
-                url: result.secure_url,
+                url: publicUrl,
                 publicId: result.public_id,
                 fileName: req.file.originalname,
                 fileSize: req.file.size,

@@ -1,6 +1,7 @@
 const cloudinary = require('cloudinary').v2;
 const streamifier = require('streamifier');
 const { PDFDocument } = require('pdf-lib');
+const pdfParse = require('pdf-parse');
 
 require('dotenv').config();
 
@@ -49,42 +50,41 @@ const uploadVideoToCloudinary = async (fileStream) => {
  * Upload PDF vers Cloudinary avec calcul automatique du pageCount
  */
 const uploadPDFToCloudinary = async (fileBuffer) => {
-  // ✅ Extraire pageCount depuis le buffer AVANT l'upload
   let pageCount = 0;
   try {
-    const pdfDoc = await PDFDocument.load(fileBuffer);
-    pageCount = pdfDoc.getPageCount();
-    console.log('📄 Nombre de pages détecté:', pageCount);
+    const pdfData = await pdfParse(fileBuffer);
+    pageCount = pdfData.numpages;
   } catch (err) {
-    console.warn('⚠️ Impossible de lire le nombre de pages:', err.message);
+    console.warn('⚠️ pdf-parse échoué:', err.message);
   }
 
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
-        resource_type: 'image',
+        resource_type: 'raw',
         folder: 'ed-platform/pdfs',
-        format: 'pdf',
-        access_mode: 'public'
+        access_mode: 'public',        // ✅ forcer accès public
+        type: 'upload',               // ✅ type upload = accès libre
       },
       (error, result) => {
         if (error) {
           console.error('❌ Erreur upload PDF Cloudinary:', error);
           reject(error);
         } else {
-          console.log('✅ PDF uploadé sur Cloudinary:', result.secure_url);
+          // ✅ Construire manuellement l'URL publique raw
+          const publicUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/${result.public_id}`;
+          
+          console.log('✅ PDF uploadé:', publicUrl, '| Pages:', pageCount);
           resolve({
-            url: result.secure_url,
+            url: publicUrl,            // ✅ URL publique garantie
             publicId: result.public_id,
-            format: result.format,
             fileSize: result.bytes || 0,
-            pageCount: pageCount // ✅ vrai nombre de pages
+            pageCount: pageCount
           });
         }
       }
     );
 
-    // ✅ fileBuffer est un Buffer, streamifier le convertit en stream
     streamifier.createReadStream(fileBuffer).pipe(uploadStream);
   });
 };
