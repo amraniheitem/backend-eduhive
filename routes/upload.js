@@ -1,4 +1,3 @@
-// routes/upload.js
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -18,6 +17,10 @@ const Teacher = require("../models/Teacher");
 
 const memoryStorage = multer({ storage: multer.memoryStorage() });
 
+// ========================================
+// UPLOAD VIDÉO
+// POST /upload/video
+// ========================================
 router.post(
   "/video",
   requireAuthExpress,
@@ -48,19 +51,16 @@ router.post(
         console.log("🖼️ Miniature reçue:", thumbnailFile.originalname);
       }
 
-      // 1. Vérifier subject
       const subject = await Subject.findById(subjectId);
       if (!subject) {
         return res.status(404).json({ success: false, error: "Matière non trouvée" });
       }
 
-      // 2. Vérifier teacher
       const teacher = await Teacher.findOne({ userId: req.user._id });
       if (!teacher) {
         return res.status(404).json({ success: false, error: "Profil professeur non trouvé" });
       }
 
-      // 3. Vérifier assignation
       const isAssigned = subject.assignedTeachers.some(
         (t) => t.teacherId.toString() === teacher._id.toString()
       );
@@ -70,11 +70,9 @@ router.post(
 
       console.log("✅ Autorisations OK");
 
-      // 4. Upload vidéo vers Cloudinary
       const videoResult = await uploadVideoToCloudinary(videoFile.buffer);
       console.log("✅ Vidéo uploadée:", videoResult.url);
 
-      // 5. Thumbnail : custom si fournie, sinon auto depuis la vidéo
       let thumbnailUrl = generateVideoThumbnailUrl(videoResult.publicId);
       let thumbnailPublicId = null;
 
@@ -87,7 +85,6 @@ router.post(
         console.log("🖼️ Miniature auto-générée (frame à 1s)");
       }
 
-      // 6. Créer objet vidéo
       const video = {
         title,
         description: description || "",
@@ -106,10 +103,8 @@ router.post(
         thumbnailPublicId: thumbnailPublicId,
       };
 
-      // 7. Ajouter au subject
       subject.videos.push(video);
 
-      // 8. Mettre à jour stats
       if (!subject.contentStats) {
         subject.contentStats = { totalVideos: 0, totalPdfs: 0, totalDuration: 0, totalSize: 0 };
       }
@@ -140,6 +135,10 @@ router.post(
   }
 );
 
+// ========================================
+// UPLOAD PDF
+// POST /upload/pdf
+// ========================================
 router.post(
   "/pdf",
   requireAuthExpress,
@@ -153,7 +152,8 @@ router.post(
         return res.status(400).json({ success: false, error: "Aucun PDF uploadé" });
       }
 
-      const { subjectId, title, description, pageCount, price } = req.body;
+      const { subjectId, title, description, price } = req.body;
+      // ✅ pageCount n'est plus récupéré depuis req.body, il est calculé automatiquement
 
       if (!subjectId || !title) {
         return res.status(400).json({ success: false, error: "subjectId et title requis" });
@@ -180,6 +180,7 @@ router.post(
 
       console.log("✅ Autorisations OK");
 
+      // ✅ uploadPDFToCloudinary calcule pageCount automatiquement depuis le buffer
       const cloudinaryResult = await uploadPDFToCloudinary(req.file.buffer);
 
       const pdf = {
@@ -188,7 +189,7 @@ router.post(
         url: cloudinaryResult.url,
         publicId: cloudinaryResult.publicId,
         fileSize: cloudinaryResult.fileSize,
-        pageCount: pageCount ? parseInt(pageCount) : 0,
+        pageCount: cloudinaryResult.pageCount, // ✅ vrai pageCount depuis pdf-lib
         uploadedBy: teacher._id,
         uploadedAt: new Date(),
         price: price ? parseFloat(price) : 0,
@@ -226,7 +227,7 @@ router.post(
 );
 
 // ========================================
-// REMPLACER THUMBNAIL APRÈS UPLOAD
+// REMPLACER THUMBNAIL
 // PATCH /upload/video/:subjectId/:videoId/thumbnail
 // ========================================
 router.patch(
@@ -266,7 +267,6 @@ router.patch(
         return res.status(404).json({ success: false, error: "Vidéo non trouvée" });
       }
 
-      // Supprimer l'ancienne thumbnail custom si elle existe
       if (video.thumbnailPublicId) {
         try {
           await deleteFileFromCloudinary(video.thumbnailPublicId, "image");
@@ -349,6 +349,7 @@ router.delete(
 
 // ========================================
 // SUPPRIMER FICHIER
+// DELETE /upload/file/:publicId
 // ========================================
 router.delete(
   "/file/:publicId",

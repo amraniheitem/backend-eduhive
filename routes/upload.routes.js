@@ -97,7 +97,7 @@ router.post("/pdf", requireAuthExpress, uploadPDF.single("pdf"), async (req, res
 
         const result = await uploadToCloudinary(req.file.buffer, {
             folder: "memory_sessions/pdfs",
-            resource_type: "raw",
+            resource_type: "image",
             type: "upload",
             access_mode: "public",  // ✅ fichier public accessible sans auth
             format: "pdf",

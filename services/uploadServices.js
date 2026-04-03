@@ -1,10 +1,9 @@
-// services/uploadService.js
 const cloudinary = require('cloudinary').v2;
 const streamifier = require('streamifier');
+const { PDFDocument } = require('pdf-lib');
 
 require('dotenv').config();
 
-// Configuration Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -47,15 +46,26 @@ const uploadVideoToCloudinary = async (fileStream) => {
 };
 
 /**
- * Upload PDF vers Cloudinary
+ * Upload PDF vers Cloudinary avec calcul automatique du pageCount
  */
-const uploadPDFToCloudinary = async (fileStream) => {
+const uploadPDFToCloudinary = async (fileBuffer) => {
+  // ✅ Extraire pageCount depuis le buffer AVANT l'upload
+  let pageCount = 0;
+  try {
+    const pdfDoc = await PDFDocument.load(fileBuffer);
+    pageCount = pdfDoc.getPageCount();
+    console.log('📄 Nombre de pages détecté:', pageCount);
+  } catch (err) {
+    console.warn('⚠️ Impossible de lire le nombre de pages:', err.message);
+  }
+
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
-        resource_type: 'raw',
+        resource_type: 'image',
         folder: 'ed-platform/pdfs',
-        format: 'pdf'
+        format: 'pdf',
+        access_mode: 'public'
       },
       (error, result) => {
         if (error) {
@@ -67,13 +77,49 @@ const uploadPDFToCloudinary = async (fileStream) => {
             url: result.secure_url,
             publicId: result.public_id,
             format: result.format,
-            fileSize: result.bytes || 0
+            fileSize: result.bytes || 0,
+            pageCount: pageCount // ✅ vrai nombre de pages
           });
         }
       }
     );
 
-    streamifier.createReadStream(fileStream).pipe(uploadStream);
+    // ✅ fileBuffer est un Buffer, streamifier le convertit en stream
+    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
+  });
+};
+
+/**
+ * Upload image vers Cloudinary
+ */
+const uploadImageToCloudinary = async (fileBuffer) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: 'image',
+        folder: 'ed-platform/thumbnails',
+        quality: 'auto',
+        fetch_format: 'auto'
+      },
+      (error, result) => {
+        if (error) {
+          console.error('❌ Erreur upload image Cloudinary:', error);
+          reject(error);
+        } else {
+          console.log('✅ Image uploadée sur Cloudinary:', result.secure_url);
+          resolve({
+            url: result.secure_url,
+            publicId: result.public_id,
+            format: result.format,
+            fileSize: result.bytes || 0,
+            width: result.width || 0,
+            height: result.height || 0
+          });
+        }
+      }
+    );
+
+    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
   });
 };
 
@@ -93,8 +139,21 @@ const deleteFileFromCloudinary = async (publicId, resourceType = 'video') => {
   }
 };
 
+/**
+ * Générer URL thumbnail automatique depuis une vidéo Cloudinary
+ */
+const generateVideoThumbnailUrl = (videoPublicId) => {
+  return cloudinary.url(videoPublicId, {
+    resource_type: 'video',
+    format: 'jpg',
+    transformation: [{ start_offset: '1' }]
+  });
+};
+
 module.exports = {
   uploadVideoToCloudinary,
   uploadPDFToCloudinary,
-  deleteFileFromCloudinary
+  uploadImageToCloudinary,
+  deleteFileFromCloudinary,
+  generateVideoThumbnailUrl
 };
