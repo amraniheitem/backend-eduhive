@@ -539,6 +539,29 @@ const resolvers = {
 
       return !!existingTransaction;
     },
+
+    hasAccessToPDF: async (_, { subjectId, pdfId }, context) => {
+      requireRole(context, ["STUDENT"]);
+
+      const subject = await Subject.findById(subjectId);
+      if (!subject) throw new Error("Matière non trouvée");
+
+      const pdf = subject.pdfs.id(pdfId);
+      if (!pdf) throw new Error("PDF non trouvé");
+
+      // PDF gratuit → accès libre
+      if (!pdf.price || pdf.price === 0) return true;
+
+      // Vérifier si une transaction PDF_READ existe
+      const existingTransaction = await Transaction.findOne({
+        student: context.user._id,
+        pdfId: pdfId,
+        type: "PDF_READ",
+        status: "COMPLETED",
+      });
+
+      return !!existingTransaction;
+    },
   },
 
   Mutation: {
@@ -1311,6 +1334,105 @@ const resolvers = {
       }
     },
 
+    // ========================================
+    // PDF PAYMENT (PAY-PER-PDF)
+    // ========================================
+    readPDF: async (_, { subjectId, pdfId }, context) => {
+      requireRole(context, ["STUDENT"]);
+
+      const student = await Student.findOne({ userId: context.user._id });
+      if (!student) throw new Error("Profil étudiant non trouvé");
+
+      const subject = await Subject.findById(subjectId);
+      if (!subject) throw new Error("Matière non trouvée");
+
+      const pdf = subject.pdfs.id(pdfId);
+      if (!pdf) throw new Error("PDF non trouvé dans cette matière");
+
+      // PDF gratuit → accès libre
+      if (!pdf.price || pdf.price === 0) {
+        return {
+          success: true,
+          transaction: null,
+          remainingCredit: student.credit,
+          message: "PDF gratuit, accès accordé",
+        };
+      }
+
+      // Vérifier idempotence
+      const existingTransaction = await Transaction.findOne({
+        student: context.user._id,
+        pdfId: pdfId,
+        type: "PDF_READ",
+        status: "COMPLETED",
+      });
+
+      if (existingTransaction) {
+        return {
+          success: true,
+          transaction: existingTransaction,
+          remainingCredit: student.credit,
+          message: "PDF déjà payé, accès accordé",
+        };
+      }
+
+      // Vérifier le solde
+      if (student.credit < pdf.price) {
+        throw new Error(
+          `Solde insuffisant pour lire ce PDF. Vous avez ${student.credit} points, il faut ${pdf.price} points`
+        );
+      }
+
+      const teacherCut = Math.round(pdf.price * 0.70);
+      const companyCut = pdf.price - teacherCut;
+
+      try {
+        student.credit -= pdf.price;
+        await student.save();
+
+        const teacherCount = subject.assignedTeachers.length;
+        if (teacherCount > 0) {
+          const teacherShare = teacherCut / teacherCount;
+          for (const assignedTeacher of subject.assignedTeachers) {
+            const teacher = await Teacher.findById(assignedTeacher.teacherId);
+            if (teacher) {
+              teacher.credit += teacherShare;
+              teacher.totalEarnings += teacherShare;
+              teacher.withdrawable += teacherShare;
+              await teacher.save();
+            }
+          }
+        }
+
+        const transaction = await Transaction.create({
+          student: context.user._id,
+          subject: subjectId,
+          pdfId: pdfId,
+          amount: pdf.price,
+          type: "PDF_READ",
+          teacherCut: teacherCut,
+          companyCut: companyCut,
+          status: "COMPLETED",
+          description: `Lecture PDF: ${pdf.title}`,
+        });
+
+        return {
+          success: true,
+          transaction: transaction,
+          remainingCredit: student.credit,
+          message: `PDF payé avec succès (${pdf.price} points)`,
+        };
+      } catch (error) {
+        try {
+          student.credit += pdf.price;
+          await student.save();
+        } catch (rollbackError) {
+          console.error("Erreur rollback crédit:", rollbackError);
+        }
+        throw new Error(`Erreur lors du paiement du PDF: ${error.message}`);
+      }
+    },
+
     updateVideoPrice: async (_, { subjectId, videoId, price }, context) => {
       requireRole(context, ["ADMIN", "SUPER_ADMIN", "TEACHER"]);
 
@@ -1332,6 +1454,32 @@ const resolvers = {
       if (!video) throw new Error("Vidéo non trouvée");
 
       video.price = price;
+      await subject.save();
+
+      return subject;
+    },
+
+    updatePDFPrice: async (_, { subjectId, pdfId, price }, context) => {
+      requireRole(context, ["ADMIN", "SUPER_ADMIN", "TEACHER"]);
+
+      const subject = await Subject.findById(subjectId);
+      if (!subject) throw new Error("Matière non trouvée");
+
+      // Si TEACHER, vérifier qu'il est assigné à cette matière
+      if (context.user.role === "TEACHER") {
+        const teacher = await Teacher.findOne({ userId: context.user._id });
+        const isAssigned = subject.assignedTeachers.some(
+          (t) => t.teacherId.toString() === teacher._id.toString()
+        );
+        if (!isAssigned) {
+          throw new Error("Vous n'êtes pas assigné à cette matière");
+        }
+      }
+
+      const pdf = subject.pdfs.id(pdfId);
+      if (!pdf) throw new Error("PDF non trouvé");
+
+      pdf.price = price;
       await subject.save();
 
       return subject;
@@ -1441,6 +1589,19 @@ const resolvers = {
       const pdf = subject.pdfs.id(pdfId);
       if (!pdf) {
         throw new Error("PDF non trouvé");
+      }
+
+      // Vérifier l'accès au PDF payant
+      if (pdf.price && pdf.price > 0) {
+        const hasAccess = await Transaction.findOne({
+          student: context.user._id,
+          pdfId: pdfId,
+          type: "PDF_READ",
+          status: "COMPLETED",
+        });
+        if (!hasAccess) {
+          throw new Error("Accès non autorisé à ce PDF. Veuillez d'abord payer.");
+        }
       }
 
       const completionPercentage =

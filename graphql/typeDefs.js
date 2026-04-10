@@ -128,6 +128,7 @@ const typeDefs = gql`
     pageCount: Int
     uploadedBy: Teacher
     uploadedAt: Date!
+    price: Float
   }
 
   type Subject {
@@ -683,6 +684,7 @@ const typeDefs = gql`
     teacherRatings(teacherId: ID!): [Rating!]!
     myRatings: [Rating!]!
     hasAccessToVideo(subjectId: ID!, videoId: ID!): Boolean!
+    hasAccessToPDF(subjectId: ID!, pdfId: ID!): Boolean!
     dashboardKPIs(dateRange: DateRangeInput): DashboardKPIs!
     monthlyTrends(months: Int): [MonthlyTrend!]!
     topPerformingCourses(limit: Int): [TopCourse!]!
@@ -797,7 +799,9 @@ const typeDefs = gql`
     removeTeacherFromSubject(subjectId: ID!, teacherId: ID!): Subject!
     buySubject(subjectId: ID!): Transaction!
     watchVideo(subjectId: ID!, videoId: ID!): WatchVideoResult!
+    readPDF(subjectId: ID!, pdfId: ID!): WatchVideoResult!
     updateVideoPrice(subjectId: ID!, videoId: ID!, price: Float!): Subject!
+    updatePDFPrice(subjectId: ID!, pdfId: ID!, price: Float!): Subject!
     deleteVideo(subjectId: ID!, videoId: ID!): Subject!
     deletePDF(subjectId: ID!, pdfId: ID!): Subject!
 

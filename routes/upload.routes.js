@@ -1,4 +1,5 @@
 // routes/upload.routes.js
+
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -44,9 +45,9 @@ const uploadAudio = multer({
             "audio/webm",
             "audio/x-m4a",
             "audio/mp4",
-            "video/3gpp",      // ✅ .3gp mobile Android
-            "video/3gpp2",     // ✅ .3g2 mobile
-            "video/3gp",       // ✅ variante
+            "video/3gpp",               // ✅ .3gp mobile Android
+            "video/3gpp2",              // ✅ .3g2 mobile
+            "video/3gp",                // ✅ variante
             "application/octet-stream", // ✅ fallback format inconnu
         ];
         if (allowedMimes.includes(file.mimetype)) {
@@ -80,114 +81,195 @@ function uploadToCloudinary(buffer, options) {
 }
 
 // ========================================
+// HELPER : Initialisation du cache global
+// ========================================
+
+function initBufferCache() {
+    if (!global.bufferCache) {
+        global.bufferCache = new Map();
+    }
+    return global.bufferCache;
+}
+
+// ========================================
+// HELPER : Nettoyage des entrées expirées
+// ========================================
+
+function cleanExpiredCache() {
+    const cache = initBufferCache();
+    const now = Date.now();
+    for (const [key, value] of cache.entries()) {
+        if (value.expiresAt <= now) {
+            cache.delete(key);
+            console.log(`🗑️ Cache expiré supprimé: ${key}`);
+        }
+    }
+}
+
+// ========================================
 // POST /upload/pdf
 // ========================================
 
-router.post("/pdf", requireAuthExpress, uploadPDF.single("pdf"), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({
+router.post(
+    "/pdf",
+    requireAuthExpress,
+    uploadPDF.single("pdf"),
+    async (req, res) => {
+        try {
+            if (!req.file) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Aucun fichier PDF envoyé. Utilisez le champ "pdf".',
+                });
+            }
+
+            console.log("📄 Upload PDF - User:", req.user.email);
+            console.log(
+                "📄 Fichier:",
+                req.file.originalname,
+                "- Taille:",
+                req.file.size,
+                "bytes"
+            );
+
+            const result = await uploadToCloudinary(req.file.buffer, {
+                folder: "memory_sessions/pdfs",
+                resource_type: "raw",
+                type: "upload",
+                access_mode: "public",
+                public_id: `pdf_${Date.now()}_${req.user.id}`,
+            });
+
+            // Construire manuellement l'URL publique raw
+            const publicUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/${result.public_id}`;
+
+            // ✅ Sauvegarde en mémoire pour l'IA (avec nettoyage préalable)
+            cleanExpiredCache();
+            const cache = initBufferCache();
+            cache.set(result.public_id, {
+                base64: req.file.buffer.toString("base64"),
+                mimeType: "application/pdf",
+                expiresAt: Date.now() + 3600000, // 1 heure
+            });
+
+            console.log("✅ PDF uploadé:", publicUrl);
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    url: publicUrl,
+                    publicId: result.public_id,
+                    fileName: req.file.originalname,
+                    fileSize: req.file.size,
+                    format: "pdf",
+                },
+            });
+        } catch (error) {
+            console.error("❌ Erreur upload PDF:", error);
+            return res.status(500).json({
                 success: false,
-                message: 'Aucun fichier PDF envoyé. Utilisez le champ "pdf".',
+                message: error.message || "Erreur lors de l'upload du PDF",
             });
         }
-
-        console.log("📄 Upload PDF - User:", req.user.email);
-        console.log("📄 Fichier:", req.file.originalname, "- Taille:", req.file.size, "bytes");
-
-        const result = await uploadToCloudinary(req.file.buffer, {
-            folder: "memory_sessions/pdfs",
-            resource_type: "raw",
-            type: "upload",
-            access_mode: "public",
-            public_id: `pdf_${Date.now()}_${req.user.id}`,
-        });
-
-        // Construire manuellement l'URL publique raw
-        const publicUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/${result.public_id}`;
-
-        // ✅ Sauvegarde temporaire en mémoire pour l'IA
-        global.bufferCache = global.bufferCache || new Map();
-        global.bufferCache.set(result.public_id, {
-            base64: req.file.buffer.toString("base64"),
-            mimeType: "application/pdf",
-            expiresAt: Date.now() + 3600000 // 1 heure
-        });
-
-        console.log("✅ PDF uploadé:", publicUrl);
-
-        return res.status(200).json({
-            success: true,
-            data: {
-                url: publicUrl,
-                publicId: result.public_id,
-                fileName: req.file.originalname,
-                fileSize: req.file.size,
-                format: "pdf",
-            },
-        });
-    } catch (error) {
-        console.error("❌ Erreur upload PDF:", error);
-        return res.status(500).json({
-            success: false,
-            message: error.message || "Erreur lors de l'upload du PDF",
-        });
     }
-});
+);
 
 // ========================================
 // POST /upload/audio
 // ========================================
 
-router.post("/audio", requireAuthExpress, uploadAudio.single("audio"), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({
+router.post(
+    "/audio",
+    requireAuthExpress,
+    uploadAudio.single("audio"),
+    async (req, res) => {
+        try {
+            if (!req.file) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Aucun fichier audio envoyé. Utilisez le champ "audio".',
+                });
+            }
+
+            console.log("🎤 Upload Audio - User:", req.user.email);
+            console.log(
+                "🎤 Fichier:",
+                req.file.originalname,
+                "- Taille:",
+                req.file.size,
+                "bytes"
+            );
+            console.log("🎤 MimeType:", req.file.mimetype);
+
+            const result = await uploadToCloudinary(req.file.buffer, {
+                folder: "memory_sessions/audios",
+                resource_type: "video",
+                type: "upload",
+                access_mode: "public",
+                format: "mp4",          // ✅ Force mp4 au lieu de 3gp
+                public_id: `audio_${Date.now()}_${req.user.id}`,
+            });
+
+            // ✅ Sauvegarde en mémoire pour l'IA (avec nettoyage préalable)
+            cleanExpiredCache();
+            const cache = initBufferCache();
+
+            // ✅ On garde le mimeType original pour une meilleure détection
+            // côté gemini.service.js (surtout pour l'arabe via 3gp/webm)
+            const originalMime =
+                req.file.mimetype &&
+                req.file.mimetype !== "application/octet-stream"
+                    ? req.file.mimetype
+                    : "audio/mpeg";
+
+            cache.set(result.public_id, {
+                base64: req.file.buffer.toString("base64"),
+                mimeType: originalMime,
+                expiresAt: Date.now() + 3600000, // 1 heure
+            });
+
+            console.log("✅ Audio uploadé:", result.secure_url);
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    url: result.secure_url,
+                    publicId: result.public_id,
+                    duration: Math.round(result.duration || 0),
+                    format: result.format || "mp4",
+                    fileSize: req.file.size,
+                    originalMimeType: originalMime,  // ✅ Utile pour le debug côté client
+                },
+            });
+        } catch (error) {
+            console.error("❌ Erreur upload Audio:", error);
+            return res.status(500).json({
                 success: false,
-                message: 'Aucun fichier audio envoyé. Utilisez le champ "audio".',
+                message: error.message || "Erreur lors de l'upload de l'audio",
             });
         }
+    }
+);
 
-        console.log("🎤 Upload Audio - User:", req.user.email);
-        console.log("🎤 Fichier:", req.file.originalname, "- Taille:", req.file.size, "bytes");
-        console.log("🎤 MimeType:", req.file.mimetype);
+// ========================================
+// DELETE /upload/cache/:publicId  (optionnel — nettoyage manuel)
+// ========================================
 
-        const result = await uploadToCloudinary(req.file.buffer, {
-            folder: "memory_sessions/audios",
-            resource_type: "video",
-            type: "upload",
-            access_mode: "public",
-            format: "mp4",  // 👈 force mp4 au lieu de 3gp
-            public_id: `audio_${Date.now()}_${req.user.id}`,
-        });
+router.delete("/cache/:publicId", requireAuthExpress, (req, res) => {
+    try {
+        const { publicId } = req.params;
+        const cache = initBufferCache();
 
+        if (cache.has(publicId)) {
+            cache.delete(publicId);
+            console.log(`🗑️ Cache supprimé manuellement: ${publicId}`);
+            return res.status(200).json({ success: true, message: "Cache supprimé" });
+        }
 
-        // ✅ Sauvegarde temporaire en mémoire pour l'IA
-        global.bufferCache = global.bufferCache || new Map();
-        global.bufferCache.set(result.public_id, {
-            base64: req.file.buffer.toString("base64"),
-            mimeType: req.file.mimetype || "audio/mpeg",
-            expiresAt: Date.now() + 3600000 // 1 heure
-        });
-
-        console.log("✅ Audio uploadé:", result.secure_url);
-
-        return res.status(200).json({
-            success: true,
-            data: {
-                url: result.secure_url,
-                publicId: result.public_id,
-                duration: Math.round(result.duration || 0),
-                format: result.format || "mp3",
-                fileSize: req.file.size,
-            },
-        });
+        return res.status(404).json({ success: false, message: "Entrée cache non trouvée" });
     } catch (error) {
-        console.error("❌ Erreur upload Audio:", error);
-        return res.status(500).json({
-            success: false,
-            message: error.message || "Erreur lors de l'upload de l'audio",
-        });
+        console.error("❌ Erreur suppression cache:", error);
+        return res.status(500).json({ success: false, message: error.message });
     }
 });
 
